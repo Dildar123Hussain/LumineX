@@ -311,7 +311,6 @@ function VerifyEmailPage({ email, password, onVerified, onChangeEmail, onResend,
 
   const handleResend = async () => {
     if (isLocked) return; // <--- ADD THIS LINE
-
     setResending(true);
     try {
       await onResend();
@@ -976,22 +975,72 @@ function ForgotForm({ onSwitch }) {
 
   const refs = useRef([]);
 
+  const [attemptCount, setAttemptCount] = useState(() => {
+    return Number(localStorage.getItem("reset_attempts")) || 0;
+  });
+  const [lockoutTime, setLockoutTime] = useState(() => {
+    return Number(localStorage.getItem("reset_lockout_until")) || 0;
+  });
+
+  const MAX_ATTEMPTS = 3;
+  const LOCKOUT_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+
+  // Helper to check if currently locked out
+  const isLockedOut = Date.now() < lockoutTime;
+
   useEffect(() => {
     if (step !== 2) return;
     const t = setInterval(() => setTimer(x => x > 0 ? x - 1 : 0), 1000);
     return () => clearInterval(t);
   }, [step]);
 
+
   const sendCode = async () => {
-    if (!validateEmail(email)) { setError("Enter a valid email"); return; }
-    setError(""); setLoading(true);
+    const now = Date.now();
+
+    // 1. Hard Block: Check if already locked out
+    if (isLockedOut) {
+      const remainingMin = Math.ceil((lockoutTime - now) / (1000 * 60));
+      setError(`Too many attempts. Please try again in ${remainingMin} minutes.`);
+      return;
+    }
+
+    // 2. Hard Block: Check if they just hit the limit
+    if (attemptCount >= MAX_ATTEMPTS) {
+      const until = now + LOCKOUT_DURATION;
+      setLockoutTime(until);
+      localStorage.setItem("reset_lockout_until", until);
+      setError("Maximum attempts reached. Please try again in 2 hours.");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError("Enter a valid email");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
     try {
       await authAPI.resetPassword(email);
-      setStep(2); setTimer(60);
-      showToast("Reset link sent!", "success");
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
+
+      // Increment count AFTER a successful API call
+      const newCount = attemptCount + 1;
+      setAttemptCount(newCount);
+      localStorage.setItem("reset_attempts", newCount);
+
+      setStep(2);
+      setTimer(60);
+      showToast(`Reset link sent! (${newCount}/${MAX_ATTEMPTS})`, "success");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
+
+
 
   const verifyOtp = () => {
     if (otp.join("").length < 6) { setError("Enter all 6 digits"); return; }
@@ -1015,6 +1064,26 @@ function ForgotForm({ onSwitch }) {
 
   const titles = ["", "Reset Password", "Check Your Email", "New Password", "Done! 🎉"];
   const subs = ["", "Enter your registered email", `Code sent to ${email}`, "Choose a strong password", "Password updated!"];
+
+  const renderResendMessage = () => {
+    if (isLockedOut) {
+      return <span style={{ color: C.red }}>Locked: Try again in 2 hours</span>;
+    }
+
+    if (timer > 0) {
+      return <span>Resend code in <strong>{timer}s</strong></span>;
+    }
+
+    return (
+      <span
+        onClick={sendCode}
+        style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}
+      >
+        Resend code ({MAX_ATTEMPTS - attemptCount} left)
+      </span>
+    );
+  };
+
 
   return (
     <div className="fade-up">
@@ -1049,11 +1118,15 @@ function ForgotForm({ onSwitch }) {
           </div>
           {error && <div style={{ fontSize: 12, color: C.red, textAlign: "center", marginBottom: 14 }}>⚠ {error}</div>}
           <Btn onClick={verifyOtp} fullWidth size="lg">Verify Code</Btn>
-          <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: C.muted }}>
+          {/* Replace both old resend divs with this single one */}
+          <div style={{ textAlign: "center", marginTop: 20, fontSize: 13 }}>
+            {renderResendMessage()}
+          </div>
+          {/**  <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: C.muted }}>
             {timer > 0
               ? <span>Resend in <strong style={{ color: C.accent }}>{timer}s</strong></span>
               : <span onClick={sendCode} style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}>Resend code</span>}
-          </div>
+          </div> */}
         </>
       )}
 
