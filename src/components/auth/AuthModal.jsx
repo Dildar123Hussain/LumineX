@@ -4,6 +4,7 @@ import { useApp } from "../../context/AppContext";
 import { authAPI, profileAPI } from "../../lib/supabase";
 import { AVATARS } from "../../data/theme";
 import { supabase } from "../../lib/supabase";
+import { data } from "react-router-dom";
 
 /* ═══════════════════════════════════════════════════════════════════
    GLOBAL STYLES
@@ -297,12 +298,16 @@ function VerifyEmailPage({ email, password, onVerified, onChangeEmail, onResend,
           clearInterval(poll);
           triggerVerified(false);
         }
+        console.log(data, 'data', error, 'err')
       } catch {
         // network hiccup — keep polling
       }
     }, 3000);
     return () => clearInterval(poll);
   }, [triggerVerified, email]);
+
+
+
 
   const handleResend = async () => {
     if (isLocked) return; // <--- ADD THIS LINE
