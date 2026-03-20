@@ -2,11 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { C, Avatar, VipBadge, VerifiedBadge, fmtNum, fmtTime, timeAgo, AppIcon } from "../ui/index";
 import { useApp } from "../../context/AppContext";
 import { useIsMobile, useVideoLike } from "../../hooks/index";
-import { videoAPI, historyAPI, likeAPI } from "../../lib/supabase";
+import { videoAPI, historyAPI, likeAPI, supabase } from "../../lib/supabase";
 import { DEMO_VIDEOS } from "../../data/theme";
 import CommentSection from "./CommentSection";
 import ControlsBar from "./ControlsBar";
-
 
 function SeekFlash({ seekFlash, arcProg }) {
   if (!seekFlash) return null;
@@ -76,11 +75,20 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   const flashTimer = useRef(null);
   const autoTimer = useRef(null);
 
-  const [video, setVideo] = useState({
-    ...initVideo,
-    views: Number(initVideo.views) || 0
+  // ── viewIncremented ref declared BEFORE any useEffect that uses it ──
+  const viewIncremented = useRef(false);
+
+const [video, setVideo] = useState(() => {
+    // 1. Check if we have a newer version saved in memory
+    const cached = sessionStorage.getItem(`video_${initVideo.id}`);
+    const latestData = cached ? JSON.parse(cached) : initVideo;
+    
+    return {
+      ...latestData,
+      views: Number(latestData.views_count ?? latestData.views ?? 0),
+    };
   });
-  //const [video, setVideo] = useState(initVideo);
+
   const [related, setRelated] = useState([]);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -100,105 +108,106 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   const [isBuffering, setIsBuffering] = useState(true);
   const [buffered, setBuffered] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
-
-
-
   const [displayLimit, setDisplayLimit] = useState(4);
+
   const { liked, count: likeCount, toggle: toggleLike } = useVideoLike(video.id, false, video.likes_count);
 
-  // Load related
+  // ═══════════════════════════════════════════════════════════════
+  // FIX: Fetch FRESH view count from DB when player opens.
+  // This is READ-ONLY — no increment. Just gets the real current
+  // number so the player doesn't show a stale value from the feed.
+  // If DB has 99, player shows 99 immediately on open.
+  // ═══════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════
+  // Reset increment tracker when video changes (related video play)
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
-    setDisplayLimit(4);
-    setRelated(DEMO_VIDEOS.filter(v => v.id !== video.id));
-    videoAPI.getFeed({ limit: 100 })
-      .then(data => {
-        if (data?.length) {
-          setRelated(data.filter(v => v.id !== video.id));
-        }
-      })
-      .catch(() => { });
-  }, [video.id]);
-
-
-
-
-  // Inside PlayerModal function
-  const viewIncremented = useRef(false);
-
-  useEffect(() => {
-    // Reset tracker when video ID changes
     viewIncremented.current = false;
   }, [video.id]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // THE ONLY INCREMENT — fires once after 3s of actual playback.
+  // viewIncremented.current prevents it from firing twice.
+  // After incrementing: updates local state + broadcasts to
+  // all VideoCards on the home/profile screen via custom event.
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!playing || viewIncremented.current) return;
-
-    // ... existing code ...
     const timer = setTimeout(async () => {
       try {
-        // 1. Call the API
-        const newViewCount = await videoAPI.incrementViews(video.id);
+    const newViewCount = await videoAPI.incrementViews(video.id);
+const updatedVideo = { ...video, views: newViewCount, views_count: newViewCount };
 
-        // 2. Update Local State immediately for real-time feel
-        setVideo(prev => ({
-          ...prev,
-          views: newViewCount
-        }));
+// Save to memory so the Home Page and Player stay in sync
+sessionStorage.setItem(`video_${video.id}`, JSON.stringify(updatedVideo));
 
-        // ─── ADD THE NEW CODE HERE (Line 147 approx) ───
-        window.dispatchEvent(new CustomEvent('video_view_updated', {
-          detail: { videoId: video.id, views: newViewCount }
-        }));
-        // ──────────────────────────────────────────────
-
+setVideo(updatedVideo);
+window.dispatchEvent(new CustomEvent("video_view_updated", {
+  detail: { videoId: video.id, views: newViewCount },
+}));
         viewIncremented.current = true;
-        console.log("View recorded!");
       } catch (err) {
         console.error("Failed to increment view:", err);
       }
     }, 3000);
-    // ... rest of code ...
-
     return () => clearTimeout(timer);
   }, [playing, video.id]);
 
-useEffect(() => {
-  if (session?.user?.id && video?.id) {
-    // Optional: Only trigger after 5 seconds of watching
-    const timer = setTimeout(() => {
-      historyAPI.addToHistory(session.user.id, video.id);
-    }, 4000); 
-    
-    return () => clearTimeout(timer);
-  }
-}, [video.id, session?.user?.id]);
+  // ═══════════════════════════════════════════════════════════════
+  // Keep player in sync if another tab/VideoCard fires the event
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.detail.videoId === video.id) {
+        setVideo(prev => ({ ...prev, views: e.detail.views }));
+      }
+    };
+    window.addEventListener("video_view_updated", handler);
+    return () => window.removeEventListener("video_view_updated", handler);
+  }, [video.id]);
 
+  // Load related videos
+  useEffect(() => {
+    setDisplayLimit(4);
+    setRelated(DEMO_VIDEOS.filter(v => v.id !== video.id));
+    videoAPI.getFeed({ limit: 100 })
+      .then(data => { if (data?.length) setRelated(data.filter(v => v.id !== video.id)); })
+      .catch(() => {});
+  }, [video.id]);
 
+  // Watch history
+  useEffect(() => {
+    if (session?.user?.id && video?.id) {
+      const timer = setTimeout(() => {
+        historyAPI.addToHistory(session.user.id, video.id);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [video.id, session?.user?.id]);
 
-  // Video events
+  // Video element events
   useEffect(() => {
     const v = vRef.current; if (!v) return;
     setIsBuffering(true); setBuffered(0); setProg(0); setCurTime(0); setDur(0);
-    const tryPlay = () => v.play().then(() => setPlaying(true)).catch(() => { });
+    const tryPlay = () => v.play().then(() => setPlaying(true)).catch(() => {});
     if (v.readyState >= 2) tryPlay(); else v.addEventListener("canplay", tryPlay, { once: true });
     const upd = () => { setCurTime(v.currentTime); setDur(v.duration || 0); setProg(v.duration ? (v.currentTime / v.duration) * 100 : 0); };
-    const onWaiting = () => setIsBuffering(true);
-    const onPlay2 = () => setIsBuffering(false);
-    const onSeeking = () => setIsBuffering(true);
-    const onSeeked = () => setIsBuffering(false);
+    const onWaiting  = () => setIsBuffering(true);
+    const onPlay2    = () => setIsBuffering(false);
+    const onSeeking  = () => setIsBuffering(true);
+    const onSeeked   = () => setIsBuffering(false);
     const onProgress = () => { if (v.buffered.length && v.duration) setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100); };
-    const onEnded = () => startAutoCountdown();
-    v.addEventListener("timeupdate", upd); v.addEventListener("loadedmetadata", upd);
-    v.addEventListener("waiting", onWaiting); v.addEventListener("playing", onPlay2);
-    v.addEventListener("seeking", onSeeking); v.addEventListener("seeked", onSeeked);
-    v.addEventListener("progress", onProgress); v.addEventListener("ended", onEnded);
-    // Inside PlayerModal.jsx
-
+    const onEnded    = () => startAutoCountdown();
+    v.addEventListener("timeupdate",    upd);       v.addEventListener("loadedmetadata", upd);
+    v.addEventListener("waiting",       onWaiting); v.addEventListener("playing",        onPlay2);
+    v.addEventListener("seeking",       onSeeking); v.addEventListener("seeked",         onSeeked);
+    v.addEventListener("progress",      onProgress); v.addEventListener("ended",          onEnded);
     return () => {
-      v.removeEventListener("timeupdate", upd); v.removeEventListener("loadedmetadata", upd);
-      v.removeEventListener("waiting", onWaiting); v.removeEventListener("playing", onPlay2);
-      v.removeEventListener("seeking", onSeeking); v.removeEventListener("seeked", onSeeked);
-      v.removeEventListener("progress", onProgress); v.removeEventListener("ended", onEnded);
+      v.removeEventListener("timeupdate",    upd);       v.removeEventListener("loadedmetadata", upd);
+      v.removeEventListener("waiting",       onWaiting); v.removeEventListener("playing",        onPlay2);
+      v.removeEventListener("seeking",       onSeeking); v.removeEventListener("seeked",         onSeeked);
+      v.removeEventListener("progress",      onProgress); v.removeEventListener("ended",          onEnded);
       clearTimeout(ctrlTimer.current); clearTimeout(flashTimer.current); clearInterval(autoTimer.current);
     };
   }, [video.id, video.video_url]);
@@ -207,8 +216,12 @@ useEffect(() => {
   useEffect(() => { if (!session) return; likeAPI.isSaved(session.user.id, video.id).then(setSaved); }, [session, video.id]);
   useEffect(() => {
     const fn = () => setIsFS(!!(document.fullscreenElement || document.webkitFullscreenElement));
-    document.addEventListener("fullscreenchange", fn); document.addEventListener("webkitfullscreenchange", fn);
-    return () => { document.removeEventListener("fullscreenchange", fn); document.removeEventListener("webkitfullscreenchange", fn); };
+    document.addEventListener("fullscreenchange",       fn);
+    document.addEventListener("webkitfullscreenchange", fn);
+    return () => {
+      document.removeEventListener("fullscreenchange",       fn);
+      document.removeEventListener("webkitfullscreenchange", fn);
+    };
   }, []);
 
   const startAutoCountdown = useCallback(() => {
@@ -216,34 +229,61 @@ useEffect(() => {
     setAutoCountdown(5); let count = 5;
     autoTimer.current = setInterval(() => {
       count--; setAutoCountdown(count);
-      if (count <= 0) { clearInterval(autoTimer.current); setAutoCountdown(null); const next = related[0]; if (next) { setVideo(next); setProg(0); setCurTime(0); setDur(0); } }
+      if (count <= 0) {
+        clearInterval(autoTimer.current); setAutoCountdown(null);
+        const next = related[0];
+        if (next) { setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 }); setProg(0); setCurTime(0); setDur(0); }
+      }
     }, 1000);
   }, [related]);
 
   const cancelAuto = useCallback(() => { clearInterval(autoTimer.current); setAutoCountdown(null); }, []);
-  const playNext = useCallback(() => { cancelAuto(); const next = related[0]; if (next) { setVideo(next); setProg(0); setCurTime(0); setDur(0); } }, [related, cancelAuto]);
-  const playRelated = useCallback(v => { cancelAuto(); setVideo(v); setProg(0); setCurTime(0); setDur(0); wrapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [cancelAuto]);
 
-  const revealCtrl = useCallback(() => { setShowCtrl(true); clearTimeout(ctrlTimer.current); ctrlTimer.current = setTimeout(() => setShowCtrl(false), 3000); }, []);
-  const togglePlay = useCallback(() => { const v = vRef.current; if (!v) return; if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => { }); revealCtrl(); } else { v.pause(); setPlaying(false); setShowCtrl(true); clearTimeout(ctrlTimer.current); } }, [revealCtrl]);
+  const playNext = useCallback(() => {
+    cancelAuto();
+    const next = related[0];
+    if (next) { setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 }); setProg(0); setCurTime(0); setDur(0); }
+  }, [related, cancelAuto]);
+
+  const playRelated = useCallback(v => {
+    cancelAuto();
+    setVideo({ ...v, views: Number(v.views_count ?? v.views) || 0 });
+    setProg(0); setCurTime(0); setDur(0);
+    wrapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [cancelAuto]);
+
+  const revealCtrl = useCallback(() => {
+    setShowCtrl(true); clearTimeout(ctrlTimer.current);
+    ctrlTimer.current = setTimeout(() => setShowCtrl(false), 3000);
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    const v = vRef.current; if (!v) return;
+    if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => {}); revealCtrl(); }
+    else { v.pause(); setPlaying(false); setShowCtrl(true); clearTimeout(ctrlTimer.current); }
+  }, [revealCtrl]);
+
   const seekBy = useCallback(secs => {
     const v = vRef.current; if (!v) return;
     v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + secs));
     const pct = v.duration ? Math.min((Math.abs(secs) / v.duration) * 100 * 6, 100) : 40;
     clearTimeout(flashTimer.current); setArcProg(0); setSeekFlash(secs > 0 ? "fwd" : "bwd");
     requestAnimationFrame(() => requestAnimationFrame(() => setArcProg(pct)));
-    flashTimer.current = setTimeout(() => { setSeekFlash(null); setArcProg(0); }, 800); revealCtrl();
+    flashTimer.current = setTimeout(() => { setSeekFlash(null); setArcProg(0); }, 800);
+    revealCtrl();
   }, [revealCtrl]);
 
   const enterFS = useCallback(() => {
     const el = wrapRef.current; if (!el) return;
-    try { if (window.screen.orientation?.lock) window.screen.orientation.lock("landscape").catch(() => { }); } catch (e) { }
-    const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) req.call(el).catch(() => { });
+    try { if (window.screen.orientation?.lock) window.screen.orientation.lock("landscape").catch(() => {}); } catch (e) {}
+    const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) req.call(el).catch(() => {});
   }, []);
+
   const exitFS = useCallback(() => {
-    try { if (window.screen.orientation?.unlock) window.screen.orientation.unlock(); } catch (e) { }
-    const ex = document.exitFullscreen || document.webkitExitFullscreen; if (ex) ex.call(document).catch(() => { });
+    try { if (window.screen.orientation?.unlock) window.screen.orientation.unlock(); } catch (e) {}
+    const ex = document.exitFullscreen || document.webkitExitFullscreen; if (ex) ex.call(document).catch(() => {});
   }, []);
+
   const toggleFS = useCallback(() => { if (isFS) exitFS(); else enterFS(); revealCtrl(); }, [isFS, enterFS, exitFS, revealCtrl]);
 
   useEffect(() => {
@@ -251,17 +291,24 @@ useEffect(() => {
       if (e.key === "Escape") { if (isFS) exitFS(); else onClose(); return; }
       if (e.key === " ") { e.preventDefault(); togglePlay(); }
       if (e.key === "ArrowRight") seekBy(10);
-      if (e.key === "ArrowLeft") seekBy(-10);
+      if (e.key === "ArrowLeft")  seekBy(-10);
       if (e.key === "f" || e.key === "F") toggleFS();
       if (e.key === "n" || e.key === "N") playNext();
     };
-    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   });
 
   const handleTouchStart = e => {
     touchX0.current = e.touches[0].clientX; touchT0.current = Date.now();
-    lpRef.current = setTimeout(() => { const v = vRef.current; if (!v) return; v.playbackRate = 2; setSpeed(2); setIs2x(true); clearTimeout(flashTimer.current); setSeekFlash("2x"); flashTimer.current = setTimeout(() => setSeekFlash(null), 900); }, 600);
+    lpRef.current = setTimeout(() => {
+      const v = vRef.current; if (!v) return;
+      v.playbackRate = 2; setSpeed(2); setIs2x(true);
+      clearTimeout(flashTimer.current); setSeekFlash("2x");
+      flashTimer.current = setTimeout(() => setSeekFlash(null), 900);
+    }, 600);
   };
+
   const handleTouchEnd = e => {
     clearTimeout(lpRef.current);
     if (is2x) { const v = vRef.current; if (v) v.playbackRate = 1; setSpeed(1); setIs2x(false); return; }
@@ -277,14 +324,25 @@ useEffect(() => {
   };
 
   const handleShare = async () => {
-    const url = window.location.origin + "?v=" + video.id;
-    if (navigator.share) { await navigator.share({ title: video.title, url }).catch(() => { }); }
-    else { navigator.clipboard.writeText(url); showToast("Link copied!", "success"); }
+    const shareData = {
+      title: video.title || "Check out this video on LumineX",
+      text: `Watch ${video.title} on LumineX`,
+      url: `${window.location.origin}?v=${video.id}`,
+    };
+    try {
+      if (navigator.share) { await navigator.share(shareData); showToast("Thanks for sharing!", "success"); }
+      else { await navigator.clipboard.writeText(shareData.url); showToast("Link copied to clipboard! 📋", "success"); }
+    } catch (error) {
+      if (error.name !== "AbortError") showToast("Could not share link", "error");
+    }
   };
+
   const handleDownload = () => {
-    const a = document.createElement("a"); a.href = video.video_url; a.download = video.title + ".mp4"; a.target = "_blank"; a.click();
+    const a = document.createElement("a"); a.href = video.video_url;
+    a.download = video.title + ".mp4"; a.target = "_blank"; a.click();
     showToast("Download started!", "success");
   };
+
   const handleSave = async () => {
     if (!session) { setAuthModal("login"); return; }
     const next = !saved; setSaved(next);
@@ -298,50 +356,26 @@ useEffect(() => {
     buffered, isBuffering,
     togglePlay, seekBy, toggleFS,
     setSpeedTo: s => { const v = vRef.current; if (v) v.playbackRate = s; setSpeed(s); },
-    onMute: () => { const v = vRef.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); },
-    onVolume: n => { setVol(n); if (vRef.current) { vRef.current.volume = n; vRef.current.muted = n === 0; setMuted(n === 0); } },
+    onMute:   () => { const v = vRef.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); },
+    onVolume: n  => { setVol(n); if (vRef.current) { vRef.current.volume = n; vRef.current.muted = n === 0; setMuted(n === 0); } },
   };
 
   const pf = video.profiles || {};
 
-
   const handleProfileClick = (e) => {
     if (e) e.stopPropagation();
-    // The user data comes from the current video being played
-    const pf = video?.user;
-    //if (!pf) return;
-    // 1. Close the player
-    if (onClose) onClose(); // Use the passed onClose prop
-    else setPlayer(null);   // Or the global setPlayer
-
-    // 2. Scroll to top
+    const profileData = video?.user || pf;
+    if (onClose) onClose(); else setPlayer(null);
     window.scrollTo(0, 0);
-
-    // 3. Set the active profile data for instant loading
-    setActiveProfile(pf);
-
-    // 4. Navigate to the profile tab
+    setActiveProfile(profileData);
     setTab(`profile`);
   };
-
-  // Effect to manage scrolling on the body based on modal state
-  useEffect(() => {
-    if (video) {
-      document.body.style.overflow = "hidden"; // Prevent background scrolling when modal is open
-    } else {
-      document.body.style.overflow = "auto";
-    }
-    // Cleanup function to reset body overflow when component unmounts
-    return () => {
-      document.body.style.overflow = "auto";
-    };
-  }, [video]);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: C.bg, overflowY: "auto", animation: "fadeIn .15s ease" }}>
       {/* Top bar */}
       <div style={{ position: "sticky", top: 0, zIndex: 100, background: "var(--headerBg)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "10px 12px" : "10px 20px", height: 52 }}>
-        <button onClick={onClose} style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: "50%", width: 34, height: 34, color: C.text, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, zIndex: 9999, pointerEvents: "auto" }}>✕</button>
+        <button onClick={onClose} style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: "50%", width: 34, height: 34, color: C.text, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
         <AppIcon size={24} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{video.title}</div>
@@ -355,16 +389,24 @@ useEffect(() => {
         {/* LEFT: Player + info + comments */}
         <div style={{ minWidth: 0 }}>
           {/* Player */}
-          <div ref={wrapRef} onMouseMove={revealCtrl}
+          <div
+            ref={wrapRef}
+            onMouseMove={revealCtrl}
             onMouseLeave={() => { if (playing) { clearTimeout(ctrlTimer.current); ctrlTimer.current = setTimeout(() => setShowCtrl(false), 600); } }}
-            style={{ position: "relative", background: "#000", width: "100%", aspectRatio: isFS ? "unset" : "16/9", userSelect: "none", ...(isFS ? { position: "fixed", inset: 0, zIndex: 99999 } : {}) }}>
-            <video ref={vRef} src={video.video_url} playsInline
-              onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+            style={{ position: "relative", background: "#000", width: "100%", aspectRatio: isFS ? "unset" : "16/9", userSelect: "none", ...(isFS ? { position: "fixed", inset: 0, zIndex: 99999 } : {}) }}
+          >
+            <video
+              ref={vRef}
+              src={video.video_url}
+              playsInline
+              onPlay={()  => setPlaying(true)}
+              onPause={() => setPlaying(false)}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onClick={!isMobile ? togglePlay : undefined}
               onTouchStart={isMobile ? handleTouchStart : undefined}
               onTouchEnd={isMobile ? handleTouchEnd : undefined}
-              onTouchMove={isMobile ? () => clearTimeout(lpRef.current) : undefined}>
+              onTouchMove={isMobile ? () => clearTimeout(lpRef.current) : undefined}
+            >
               {captionLang !== "off" && video.caption_url && <track src={video.caption_url} kind="subtitles" label="English" default />}
             </video>
 
@@ -390,16 +432,14 @@ useEffect(() => {
 
             {isMobile && showCtrl && !is2x && !seekFlash && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", pointerEvents: "none", zIndex: 8 }}>
-                {[
-                  { icon: "↺", l: "10" },
-                  {},
-                  { icon: "↻", l: "10" }
-                ].map((item, i) => (
+                {[{ icon: "↺", l: "10" }, {}, { icon: "↻", l: "10" }].map((item, i) => (
                   <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {item.icon && <div style={{ background: "rgba(0,0,0,.45)", borderRadius: 40, width: 46, height: 46, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,.14)" }}>
-                      <span style={{ fontSize: 14 }}>{item.icon}</span>
-                      <span style={{ fontSize: 8, color: "rgba(255,255,255,.7)", fontWeight: 700 }}>{item.l}</span>
-                    </div>}
+                    {item.icon && (
+                      <div style={{ background: "rgba(0,0,0,.45)", borderRadius: 40, width: 46, height: 46, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,.14)" }}>
+                        <span style={{ fontSize: 14 }}>{item.icon}</span>
+                        <span style={{ fontSize: 8, color: "rgba(255,255,255,.7)", fontWeight: 700 }}>{item.l}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -409,77 +449,42 @@ useEffect(() => {
             <ControlsBar {...controlProps} />
           </div>
 
-          {/* Info */}
+          {/* Info section */}
           <div style={{ padding: isMobile ? "14px 12px" : "18px 20px" }}>
             <h1 style={{ fontSize: isMobile ? 16 : 21, fontWeight: 800, lineHeight: 1.35, marginBottom: 12, fontFamily: "'Syne',sans-serif", color: C.text }}>{video.title}</h1>
+
             <div
               onClick={handleProfileClick}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                padding: "4px 8px",
-                marginLeft: "-8px", // Offsets padding to keep alignment
-                borderRadius: "8px"
-              }}
-              // Unified Hover Effect
-              onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = 0.8;
-                // Optional: add a subtle background or underline the name
-                const nameSpan = e.currentTarget.querySelector('.profile-name-text');
-                if (nameSpan) nameSpan.style.textDecoration = 'underline';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = 1;
-                const nameSpan = e.currentTarget.querySelector('.profile-name-text');
-                if (nameSpan) nameSpan.style.textDecoration = 'none';
-              }}
+              style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", transition: "all 0.2s ease", padding: "4px 8px", marginLeft: "-8px", borderRadius: "8px" }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = 0.8; const n = e.currentTarget.querySelector(".profile-name-text"); if (n) n.style.textDecoration = "underline"; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = 1;   const n = e.currentTarget.querySelector(".profile-name-text"); if (n) n.style.textDecoration = "none"; }}
             >
               <Avatar profile={pf} size={isMobile ? 34 : 42} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span
-                    className="profile-name-text"
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: C.text,
-                      transition: "color 0.2s"
-                    }}
-                  >
+                  <span className="profile-name-text" style={{ fontSize: 14, fontWeight: 700, color: C.text, transition: "color 0.2s" }}>
                     {pf.display_name || pf.username || video.channel}
                   </span>
                   {pf.is_verified && <VerifiedBadge />}
                 </div>
-
-                <div style={{ fontSize: 11, color: C.muted }}>
-                  {fmtNum(pf.followers_count || 0)} followers
-                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>{fmtNum(pf.followers_count || 0)} followers</div>
               </div>
-              {/* Inside the profile/info section of your PlayerModal JSX */}
-              {/* Inside the profile/info section */}
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: C.muted }}>
-                  {/* This will now update in real-time when the state changes */}
-                  👁 {fmtNum(video.views)}
-                </span>
+                {/* video.views is always the live value — updated by fresh fetch on open + increment after 3s */}
+                <span style={{ fontSize: 11, color: C.muted }}>👁 {fmtNum(video.views)}</span>
                 <span style={{ fontSize: 11, color: C.muted }}>· {timeAgo(video.created_at)}</span>
                 {video.is_vip && <VipBadge />}
               </div>
             </div>
 
             {/* Action buttons */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16, marginTop: 12 }}>
               {[
                 { icon: liked ? "❤️" : "🤍", label: fmtNum(likeCount), active: liked, color: C.accent3, onClick: toggleLike },
                 { icon: "🔖", label: saved ? "Saved" : "Save", active: saved, color: C.accent, onClick: handleSave },
                 { icon: "🔗", label: "Share", color: C.accent2, onClick: handleShare },
                 { icon: "📥", label: "Download", color: C.muted, onClick: handleDownload },
-              ].map(btn => (
-                <ActionBtn key={btn.label} {...btn} />
-              ))}
+              ].map(btn => <ActionBtn key={btn.label} {...btn} />)}
             </div>
 
             {video.description && (
@@ -500,40 +505,33 @@ useEffect(() => {
               </div>
             )}
 
-            {isMobile && <div style={{ marginBottom: 24 }}><RelatedList videos={related.slice(0, displayLimit)} onPlay={playRelated} isMobile={true} />
-              {related.length > displayLimit && (
-                <button
-                  onClick={() => setDisplayLimit(prev => prev + 20)}
-                  style={loadMoreButtonStyle}
-                >
-                  Show More Videos
-                </button>
-              )}
-            </div>}
+            {isMobile && (
+              <div style={{ marginBottom: 24 }}>
+                <RelatedList videos={related.slice(0, displayLimit)} onPlay={playRelated} isMobile />
+                {related.length > displayLimit && (
+                  <button onClick={() => setDisplayLimit(p => p + 20)} style={loadMoreButtonStyle}>
+                    Show More Videos
+                  </button>
+                )}
+              </div>
+            )}
+
             <CommentSection videoId={video.id} videoOwnerId={pf.id} />
           </div>
         </div>
 
-        {/* RIGHT: related (desktop sticky) */}
+        {/* RIGHT: Related (desktop sticky) */}
         {!isMobile && (
           <div style={{ borderLeft: `1px solid ${C.border}`, height: "calc(100vh - 52px)", position: "sticky", top: 52, overflowY: "auto", scrollbarWidth: "none", padding: "16px 16px 24px" }}>
             <RelatedList videos={related.slice(0, displayLimit)} onPlay={playRelated} isMobile={false} />
             {related.length > displayLimit && (
               <button
-                onClick={() => setDisplayLimit(prev => prev + 20)}
+                onClick={() => setDisplayLimit(p => p + 20)}
                 style={loadMoreButtonStyle}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-2px) scale(1.02)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.4)";
-                }}
-
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0) scale(1)";
-                  e.currentTarget.style.boxShadow = "0 4px 15px rgba(0,0,0,0.3)";
-                }}
-
-                onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.97)"}
-                onMouseUp={(e) => e.currentTarget.style.transform = "scale(1.02)"}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px) scale(1.02)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.4)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0) scale(1)";      e.currentTarget.style.boxShadow = "0 4px 15px rgba(0,0,0,0.3)"; }}
+                onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+                onMouseUp={e =>   e.currentTarget.style.transform = "scale(1.02)"}
               >
                 Show More Videos
               </button>
@@ -548,7 +546,12 @@ useEffect(() => {
 function ActionBtn({ icon, label, active, color, onClick }) {
   const [hov, setHov] = useState(false);
   return (
-    <button onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, border: `1px solid ${active || hov ? color : C.border}`, background: active || hov ? color + "1a" : C.bg3, color: active || hov ? color : C.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, border: `1px solid ${active || hov ? color : C.border}`, background: active || hov ? color + "1a" : C.bg3, color: active || hov ? color : C.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
+    >
       {icon} {label}
     </button>
   );
@@ -571,10 +574,19 @@ function RelatedList({ videos, onPlay, isMobile }) {
 function RelatedCard({ video: v, index, onPlay, isMobile }) {
   const [hov, setHov] = useState(false);
   return (
-    <div onClick={() => onPlay(v)} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 0 : 10, padding: isMobile ? 0 : "8px 6px", borderRadius: 10, cursor: "pointer", background: hov ? C.bg3 : "transparent", transition: "background .2s", borderBottom: isMobile ? "none" : `1px solid ${C.border}22` }}>
+    <div
+      onClick={() => onPlay(v)}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 0 : 10, padding: isMobile ? 0 : "8px 6px", borderRadius: 10, cursor: "pointer", background: hov ? C.bg3 : "transparent", transition: "background .2s", borderBottom: isMobile ? "none" : `1px solid ${C.border}22` }}
+    >
       <div style={{ position: "relative", flexShrink: 0, width: isMobile ? "100%" : 120, aspectRatio: "16/9" }}>
-        <img src={v.thumbnail_url || `https://picsum.photos/640/360?random=${String(v.id).charCodeAt?.(0) || index + 1}`} alt={v.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: isMobile ? "10px 10px 0 0" : 8 }} />
+        <img
+          src={v.thumbnail_url || `https://picsum.photos/640/360?random=${String(v.id).charCodeAt?.(0) || index + 1}`}
+          alt={v.title}
+          loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: isMobile ? "10px 10px 0 0" : 8 }}
+        />
         {v.is_vip && <div style={{ position: "absolute", top: 4, left: 4 }}><VipBadge small /></div>}
         {v.duration && <div style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,.85)", color: "white", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>{v.duration}</div>}
         {index === 0 && <div style={{ position: "absolute", top: 4, right: 4, background: C.accent, color: "white", fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 4, letterSpacing: .5 }}>NEXT</div>}
@@ -582,31 +594,20 @@ function RelatedCard({ video: v, index, onPlay, isMobile }) {
       <div style={{ flex: 1, minWidth: 0, padding: isMobile ? "7px 8px 8px" : 0 }}>
         <div style={{ fontSize: isMobile ? 11 : 12, fontWeight: 600, lineHeight: 1.4, marginBottom: 3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", color: C.text }}>{v.title}</div>
         <div style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 2 }}>{v.profiles?.display_name || v.channel || "Unknown"}</div>
-        <div style={{ fontSize: 9, color: C.muted }}>{fmtNum(v.views || 0)} views</div>
+        <div style={{ fontSize: 9, color: C.muted }}>{fmtNum(v.views_count ?? v.views ?? 0)} views</div>
       </div>
     </div>
   );
 }
 
 const loadMoreButtonStyle = {
-  width: "100%",
-  padding: "14px 0",
-  marginTop: "20px",
-  // A sleek gradient using your theme's accent colors
-  background: `linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent + 'dd'})`,
-  border: "none",
-  borderRadius: "14px",
-  color: "white",
-  fontSize: "14px",
-  fontWeight: "800",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-  cursor: "pointer",
+  width: "100%", padding: "14px 0", marginTop: "20px",
+  background: `linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent + "dd"})`,
+  border: "none", borderRadius: "14px", color: "white",
+  fontSize: "14px", fontWeight: "800", textTransform: "uppercase",
+  letterSpacing: "1px", cursor: "pointer",
   boxShadow: "0 4px 15px rgba(0,0,0,0.3)",
   transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-  fontFamily: "inherit",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  outline: "none",
+  fontFamily: "inherit", display: "flex", alignItems: "center",
+  justifyContent: "center", outline: "none",
 };
