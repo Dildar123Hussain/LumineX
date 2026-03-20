@@ -36,45 +36,52 @@ const STYLES = `
   .verify-ring:nth-child(2){ animation-delay:.8s; }
   .verify-ring:nth-child(3){ animation-delay:1.6s; }
 
-  .dot { display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent,#6c63ff);animation:dotDance 1.4s ease-in-out infinite both; }
+  .dot {
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--accent,#6c63ff);
+    animation:dotDance 1.4s ease-in-out infinite both;
+  }
   .dot:nth-child(2){ animation-delay:.16s; }
   .dot:nth-child(3){ animation-delay:.32s; }
 
   .progress-fill { animation: slideRight .6s cubic-bezier(.34,1.2,.64,1) both; }
 
   .email-tag {
-    display:inline-flex;align-items:center;gap:6px;
+    display:inline-flex; align-items:center; gap:6px;
     background:color-mix(in srgb,var(--accent,#6c63ff) 12%,transparent);
     border:1px solid color-mix(in srgb,var(--accent,#6c63ff) 30%,transparent);
-    border-radius:99px;padding:4px 14px 4px 10px;
-    font-size:13px;font-weight:600;color:var(--accent,#6c63ff);
+    border-radius:99px; padding:4px 14px 4px 10px;
+    font-size:13px; font-weight:600; color:var(--accent,#6c63ff);
   }
 
-  .glass { backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px); }
+  .glass { backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px); }
 
   .btn-primary {
-    background:linear-gradient(135deg,var(--accent,#6c63ff),var(--accent2,#ff6584));
-    border:none;color:#fff;
-    font-family:'DM Sans',sans-serif;font-weight:600;
-    border-radius:14px;cursor:pointer;
-    transition:all .22s;position:relative;overflow:hidden;
+    background: linear-gradient(135deg, var(--accent,#6c63ff), var(--accent2,#ff6584));
+    border:none; color:#fff;
+    font-family:'DM Sans',sans-serif; font-weight:600;
+    border-radius:14px; cursor:pointer;
+    transition:all .22s; position:relative; overflow:hidden;
   }
-  .btn-primary:hover:not(:disabled){
+  .btn-primary:hover:not(:disabled) {
     transform:translateY(-1px);
     box-shadow:0 10px 28px color-mix(in srgb,var(--accent,#6c63ff) 38%,transparent);
   }
-  .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none!important;}
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none !important; }
 
   .btn-ghost {
     background:transparent;
     border:1px solid color-mix(in srgb,#fff 12%,transparent);
-    border-radius:14px;cursor:pointer;
-    transition:all .2s;font-family:'DM Sans',sans-serif;font-weight:500;
+    border-radius:14px; cursor:pointer;
+    transition:all .2s; font-family:'DM Sans',sans-serif; font-weight:500;
   }
-  .btn-ghost:hover{background:color-mix(in srgb,var(--accent,#6c63ff) 8%,transparent);border-color:var(--accent,#6c63ff);}
+  .btn-ghost:hover {
+    background:color-mix(in srgb,var(--accent,#6c63ff) 8%,transparent);
+    border-color:var(--accent,#6c63ff);
+  }
 
-  .step-card{display:flex;align-items:center;gap:10px;border-radius:10px;padding:10px 14px;transition:all .2s;}
-  .success-icon{animation:successPop .5s cubic-bezier(.34,1.56,.64,1) both;}
+  .step-card { display:flex; align-items:center; gap:10px; border-radius:10px; padding:10px 14px; }
+  .success-icon { animation:successPop .5s cubic-bezier(.34,1.56,.64,1) both; }
 `;
 
 function StyleTag() {
@@ -115,7 +122,7 @@ export default function AuthModal() {
             background: `color-mix(in srgb,${C.bg2 || "#181820"} 94%,transparent)`,
             border: `1px solid color-mix(in srgb,${C.border || "#2a2a3a"} 70%,transparent)`,
             borderRadius: 26, padding: "36px 28px 28px",
-            boxShadow: "0 36px 100px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.05)",
+            boxShadow: "0 36px 100px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05)",
           }}
         >
           {/* Close */}
@@ -126,7 +133,8 @@ export default function AuthModal() {
               width: 32, height: 32, borderRadius: "50%",
               background: C.bg3 || "#222", border: `1px solid ${C.border || "#333"}`,
               color: C.muted || "#888", fontSize: 14, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all .2s",
             }}
             onMouseEnter={e => { e.currentTarget.style.background = C.border; e.currentTarget.style.color = C.text; }}
             onMouseLeave={e => { e.currentTarget.style.background = C.bg3; e.currentTarget.style.color = C.muted; }}
@@ -138,9 +146,9 @@ export default function AuthModal() {
             <Logo size={22} />
           </div>
 
-          {authModal === "login"  && <LoginForm  onSwitch={setAuthModal} onClose={onClose} />}
-          {authModal === "signup" && <SignupForm  onSwitch={setAuthModal} onClose={onClose} />}
-          {authModal === "forgot" && <ForgotForm  onSwitch={setAuthModal} />}
+          {authModal === "login" && <LoginForm onSwitch={setAuthModal} onClose={onClose} />}
+          {authModal === "signup" && <SignupForm onSwitch={setAuthModal} onClose={onClose} />}
+          {authModal === "forgot" && <ForgotForm onSwitch={setAuthModal} />}
         </div>
       </div>
     </>
@@ -182,6 +190,7 @@ function GoogleBtn() {
   );
 }
 
+
 function Dots() {
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
@@ -219,56 +228,64 @@ function EmailStatusHint({ status, onLoginClick }) {
 
 /* ═══════════════════════════════════════════════════════════════════
    VERIFY EMAIL PAGE
-═══════════════════════════════════════════════════════════════════ */
-function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
-  const [resending, setResending] = useState(false);
-  const [resent,    setResent]    = useState(false);
-  const [timer,     setTimer]     = useState(60);
-  const [verified,  setVerified]  = useState(false);
 
-  // Track whether we've already triggered onVerified to avoid double-firing
+   Two strategies run in parallel:
+   1. onAuthStateChange  — instant, same browser/device
+   2. RPC poll every 3s  — works for cross-device (phone verifies, desktop reacts)
+
+   After confirmation is detected, signInWithPassword is called so the
+   desktop tab gets a real session — then the modal closes.
+
+   Required SQL (run once in Supabase SQL editor):
+   ─────────────────────────────────────────────────
+   create or replace function public.check_email_confirmed(email_input text)
+   returns boolean language sql security definer as $$
+     select exists (
+       select 1 from auth.users
+       where email = lower(email_input)
+       and email_confirmed_at is not null
+     );
+   $$;
+═══════════════════════════════════════════════════════════════════ */
+function VerifyEmailPage({ email, password, onVerified, onChangeEmail, onResend, isLocked, resendCount }) {
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [timer, setTimer] = useState(60);
+  const [verified, setVerified] = useState(false);
+
+  // Guard: prevent both strategies firing onVerified at the same time
   const doneRef = useRef(false);
 
-  const triggerVerified = useCallback(() => {
+  // hasSession=true  → magic link opened in THIS browser, session already exists
+  // hasSession=false → opened on phone, desktop needs signInWithPassword
+  const triggerVerified = useCallback((hasSession = false) => {
     if (doneRef.current) return;
     doneRef.current = true;
     setVerified(true);
-    setTimeout(() => onVerified(), 1800);
+    setTimeout(() => onVerified(hasSession), 1800);
   }, [onVerified]);
 
-  // Countdown timer for resend button
+  // Countdown for resend button
   useEffect(() => {
     const t = setInterval(() => setTimer(x => x > 0 ? x - 1 : 0), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Strategy 1: onAuthStateChange — fires instantly when the magic link is
-  // clicked in the SAME browser (same device, same or different tab).
+  // Strategy 1: same-browser detection (instant).
+  // Session already created by magic link — pass true so handleVerified
+  // skips the redundant signInWithPassword.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
-        triggerVerified();
+        triggerVerified(true);
       }
     });
     return () => subscription.unsubscribe();
   }, [triggerVerified]);
 
-  // Strategy 2: Polling via RPC — works when magic link is clicked on a
-  // DIFFERENT device (phone). getUser() won't work here because there's
-  // no active session on the desktop tab yet. Instead we call a lightweight
-  // RPC that queries auth.users directly using the service role (security
-  // definer), so no session token is required.
-  //
-  // SQL to run once in Supabase SQL editor:
-  //
-  //   create or replace function public.check_email_confirmed(email_input text)
-  //   returns boolean language sql security definer as $$
-  //     select exists (
-  //       select 1 from auth.users
-  //       where email = lower(email_input)
-  //       and email_confirmed_at is not null
-  //     );
-  //   $$;
+  // Strategy 2: cross-device polling via RPC (phone verifies → desktop reacts).
+  // No session on desktop yet — pass false so handleVerified calls
+  // signInWithPassword to create the session on this device.
   useEffect(() => {
     const poll = setInterval(async () => {
       try {
@@ -278,16 +295,7 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
         );
         if (!error && confirmed === true) {
           clearInterval(poll);
-          // Now sign the user in automatically so they get a session
-          // on this device too — Supabase will fire onAuthStateChange
-          // which calls triggerVerified(). The signInWithOtp below sends
-          // them a session silently (no new email) since they're confirmed.
-          // If you stored the password, use signInWithPassword instead:
-          //
-          //   await supabase.auth.signInWithPassword({ email, password })
-          //
-          // For magic-link only flow, trigger verified directly:
-          triggerVerified();
+          triggerVerified(false);
         }
       } catch {
         // network hiccup — keep polling
@@ -297,6 +305,8 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
   }, [triggerVerified, email]);
 
   const handleResend = async () => {
+    if (isLocked) return; // <--- ADD THIS LINE
+
     setResending(true);
     try {
       await onResend();
@@ -308,6 +318,7 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
     }
   };
 
+  /* ── Success screen ── */
   if (verified) {
     return (
       <div className="fade-up" style={{ textAlign: "center", padding: "8px 0 16px" }}>
@@ -336,7 +347,7 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
         <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Welcome aboard — taking you home…</p>
         <div style={{
           margin: "20px auto 0", width: 36, height: 36,
-          border: `3px solid color-mix(in srgb,#22c55e 25%,transparent)`,
+          border: "3px solid color-mix(in srgb,#22c55e 25%,transparent)",
           borderTopColor: "#22c55e", borderRadius: "50%",
           animation: "spin 1s linear infinite",
         }} />
@@ -344,6 +355,7 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
     );
   }
 
+  /* ── Waiting screen ── */
   return (
     <div className="fade-up" style={{ fontFamily: "'DM Sans',sans-serif" }}>
       {/* Animated envelope */}
@@ -414,7 +426,10 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
           <div
             key={i}
             className="step-card fade-up"
-            style={{ animationDelay: `${i * 0.07}s`, background: `color-mix(in srgb,${C.accent} 4%,${C.bg3 || "#1a1a24"})` }}
+            style={{
+              animationDelay: `${i * 0.07}s`,
+              background: `color-mix(in srgb,${C.accent} 4%,${C.bg3 || "#1a1a24"})`,
+            }}
           >
             <span style={{ fontSize: 18, flexShrink: 0 }}>{s.icon}</span>
             <span style={{ fontSize: 12, color: C.muted, lineHeight: 1.4 }}>{s.text}</span>
@@ -423,28 +438,62 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
       </div>
 
       {/* Actions */}
+
+      <div style={{
+        textAlign: "center",
+        marginBottom: 12,
+        fontSize: 11,
+        fontWeight: 600,
+        color: isLocked ? "#ef4444" : C.muted,
+        letterSpacing: "0.02em"
+      }}>
+        {isLocked ? (
+          "RESEND LIMIT REACHED"
+        ) : (
+          <>ATTEMPTS: <span style={{ color: C.text }}>{resendCount}/3</span></>
+        )}
+      </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={onChangeEmail} className="btn-ghost" style={{ flex: 1, padding: "10px", fontSize: 12, color: C.muted }}>
           ← Change email
         </button>
+
         <button
-          onClick={timer === 0 && !resending ? handleResend : undefined}
-          disabled={timer > 0 || resending}
+          onClick={!isLocked && timer === 0 && !resending ? handleResend : undefined}
+          disabled={isLocked || timer > 0 || resending}
           style={{
-            flex: 1.6, padding: "10px 14px", borderRadius: 14, border: "none",
-            background: timer === 0 && !resending ? `linear-gradient(135deg,${C.accent},${C.accent2})` : C.bg3 || "#1a1a24",
-            color: timer === 0 && !resending ? "#fff" : C.muted,
-            fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600,
-            cursor: timer === 0 && !resending ? "pointer" : "not-allowed",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            flex: 1.6,
+            padding: "10px 14px",
+            borderRadius: 14,
+            border: "none",
+            background: (!isLocked && timer === 0 && !resending)
+              ? `linear-gradient(135deg, ${C.accent}, ${C.accent2})`
+              : C.bg3 || "#1a1a24",
+            color: (!isLocked && timer === 0 && !resending) ? "#fff" : C.muted,
+            fontFamily: "'DM Sans',sans-serif",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: (!isLocked && timer === 0 && !resending) ? "pointer" : "not-allowed",
+            display: "flex",
+            alignItems: "center",
+            justifyChild: "center",
+            gap: 6,
             transition: "all .2s",
+            opacity: isLocked ? 0.6 : 1, // Visual cue for lockout
           }}
         >
-          {resending
-            ? <><div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} /> Sending…</>
-            : resent   ? "✓ Sent!"
-            : timer > 0 ? `Resend in ${timer}s`
-            : "↺ Resend link"}
+          {resending ? (
+            <>
+              <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} />
+              Sending...
+            </>
+          ) : isLocked ? (
+            "Locked (1hr)"
+          ) : timer > 0 ? (
+            `Resend in ${timer}s`
+          ) : (
+            "Resend Link"
+          )}
         </button>
       </div>
     </div>
@@ -456,14 +505,14 @@ function VerifyEmailPage({ email, onVerified, onChangeEmail, onResend }) {
 ═══════════════════════════════════════════════════════════════════ */
 function LoginForm({ onSwitch, onClose }) {
   const { showToast } = useApp();
-  const [email,   setEmail]   = useState("");
-  const [pass,    setPass]    = useState("");
-  const [errors,  setErrors]  = useState({});
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
     const e = {};
-    if (!email.trim())           e.email = "Email required";
+    if (!email.trim()) e.email = "Email required";
     else if (!validateEmail(email)) e.email = "Invalid email";
     if (!pass) e.pass = "Password required";
     setErrors(e);
@@ -505,58 +554,76 @@ function LoginForm({ onSwitch, onClose }) {
 function SignupForm({ onSwitch, onClose }) {
   const { showToast, setAuthModal } = useApp();
 
-  const [step,    setStep]    = useState(1);
-  const [form,    setForm]    = useState({
+  const [step, setStep] = useState(1);
+  const [form, setForm] = useState({
     name: "", username: "", email: "",
     pass: "", confirm: "", dob: "",
-    agree: false
+    agree: false, avatarId: "a9",
   });
-  const [errors,      setErrors]      = useState({});
-  const [loading,     setLoading]     = useState(false);
-  const [unStatus,    setUnStatus]    = useState(null); // null|checking|ok|taken
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [unStatus, setUnStatus] = useState(null); // null|checking|ok|taken
   const [emailStatus, setEmailStatus] = useState(null); // null|checking|available|registered
 
   const uTimer = useRef(null);
   const eTimer = useRef(null);
 
+
+  // 1. Initialize count and lockout from localStorage (or defaults)
+  const [resendCount, setResendCount] = useState(() =>
+    Number(localStorage.getItem('resend_count')) || 0
+  );
+  const [lockoutUntil, setLockoutUntil] = useState(() =>
+    Number(localStorage.getItem('resend_lockout')) || null
+  );
+  const [isLocked, setIsLocked] = useState(false);
+
+  // 2. Effect to check lockout status every second
+  useEffect(() => {
+    const checkLockout = () => {
+      if (lockoutUntil && Date.now() < lockoutUntil) {
+        setIsLocked(true);
+      } else {
+        setIsLocked(false);
+        if (lockoutUntil) { // Clear if time passed
+          setLockoutUntil(null);
+          setResendCount(0);
+          localStorage.removeItem('resend_lockout');
+          localStorage.removeItem('resend_count');
+        }
+      }
+    };
+
+    checkLockout();
+    const interval = setInterval(checkLockout, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutUntil]);
+
+
   /* ─────────────────────────────────────────────────────────────
-     EMAIL EXISTENCE CHECK
-     Uses a Supabase RPC function so no emails are sent and no
-     ghost accounts are created.
+     EMAIL EXISTENCE CHECK  (requires RPC in Supabase):
 
-     Run this once in your Supabase SQL editor:
-
-       create or replace function public.check_email_exists(email_input text)
-       returns boolean language sql security definer as $$
-         select exists (
-           select 1 from auth.users where email = lower(email_input)
-         );
-       $$;
-
-     If you haven't set up the RPC yet, the catch block fails open
-     (sets "available") so signup still works — just without the check.
+     create or replace function public.check_email_exists(email_input text)
+     returns boolean language sql security definer as $$
+       select exists (
+         select 1 from auth.users where email = lower(email_input)
+       );
+     $$;
   ───────────────────────────────────────────────────────────────── */
   const checkEmail = useCallback(async (val) => {
-    if (!val || !validateEmail(val)) {
-      setEmailStatus(null);
-      return;
-    }
+    if (!val || !validateEmail(val)) { setEmailStatus(null); return; }
     setEmailStatus("checking");
     try {
       const { data, error } = await supabase.rpc("check_email_exists", {
         email_input: val.toLowerCase(),
       });
       if (error) throw error;
-      // data is true  → email already in auth.users
-      // data is false → email is free
       setEmailStatus(data === true ? "registered" : "available");
     } catch {
-      // RPC not set up yet or network error — fail open, don't block signup
-      setEmailStatus("available");
+      setEmailStatus("available"); // fail open
     }
   }, []);
 
-  /* Fires on every keystroke; debounces the actual network call */
   const onEmailChange = useCallback((e) => {
     const val = e.target.value;
     setForm(prev => ({ ...prev, email: val }));
@@ -586,16 +653,10 @@ function SignupForm({ onSwitch, onClose }) {
         : v;
     setForm(prev => ({ ...prev, [k]: val }));
     if (k === "dob") {
-      if (!val) {
-        setErrors(prev => ({ ...prev, dob: "Date of birth required" }));
-        return;
-      }
+      if (!val) { setErrors(prev => ({ ...prev, dob: "Date of birth required" })); return; }
       const age = (Date.now() - new Date(val)) / (365.25 * 86400000);
-      if (age < 18) {
-        setErrors(prev => ({ ...prev, dob: "Must be 18 or older 🚫" }));
-      } else {
-        setErrors(prev => { const { dob, ...rest } = prev; return rest; });
-      }
+      if (age < 18) setErrors(prev => ({ ...prev, dob: "Must be 18 or older 🚫" }));
+      else setErrors(prev => { const { dob, ...rest } = prev; return rest; });
     }
   };
 
@@ -607,21 +668,21 @@ function SignupForm({ onSwitch, onClose }) {
     }
     const e = {};
     if (!form.name.trim() || form.name.length < 2) e.name = "At least 2 characters";
-    if (!form.username || form.username.length < 3)  e.username = "At least 3 characters";
-    else if (!/^[a-z0-9_]+$/.test(form.username))   e.username = "Only a-z, 0-9, _";
-    else if (unStatus === "taken")                   e.username = "Username taken";
-    if (!form.email.trim())          e.email = "Email required";
+    if (!form.username || form.username.length < 3) e.username = "At least 3 characters";
+    else if (!/^[a-z0-9_]+$/.test(form.username)) e.username = "Only a-z, 0-9, _";
+    else if (unStatus === "taken") e.username = "Username taken";
+    if (!form.email.trim()) e.email = "Email required";
     else if (!validateEmail(form.email)) e.email = "Invalid email";
     setErrors(e);
     if (!Object.keys(e).length) setStep(2);
   };
 
-  /* ── step 2 → send magic link ── */
+  /* ── step 2 → call signUp → show verify page ── */
   const submit = async () => {
     const e = {};
     if (!form.pass || form.pass.length < 8) e.pass = "At least 8 characters";
-    else if (!/[A-Z]/.test(form.pass))      e.pass = "Needs an uppercase letter";
-    else if (!/[0-9]/.test(form.pass))      e.pass = "Needs a number";
+    else if (!/[A-Z]/.test(form.pass)) e.pass = "Needs an uppercase letter";
+    else if (!/[0-9]/.test(form.pass)) e.pass = "Needs a number";
     if (form.pass !== form.confirm) e.confirm = "Passwords don't match";
     if (!form.dob) e.dob = "Date of birth required";
     else if ((Date.now() - new Date(form.dob)) / (365.25 * 86400000) < 18) e.dob = "Must be 18+";
@@ -632,11 +693,11 @@ function SignupForm({ onSwitch, onClose }) {
     setLoading(true);
     try {
       const { data, error } = await authAPI.signUp({
-        email:       form.email,
-        password:    form.pass,
-        username:    form.username.toLowerCase(),
+        email: form.email,
+        password: form.pass,
+        username: form.username.toLowerCase(),
         displayName: form.name,
-        avatarId:    form.avatarId,
+        avatarId: form.avatarId,
       });
       if (error) throw error;
       showToast("Magic link sent! Check your email 📧", "info");
@@ -648,17 +709,71 @@ function SignupForm({ onSwitch, onClose }) {
     }
   };
 
+
   const handleResendLink = async () => {
-    const { error } = await supabase.auth.resend({ type: "signup", email: form.email });
-    if (!error) showToast("Link resent! 📧", "info");
-    else showToast("Could not resend — try again shortly.", "error");
+    // 1. Check if already locked
+    if (isLocked) {
+      const remainingMins = Math.ceil((lockoutUntil - Date.now()) / 60000);
+      showToast(`Limit reached. Try again in ${remainingMins} minutes.`, "error");
+      return;
+    }
+
+    // 2. Perform the Resend
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: form.email
+    });
+
+    if (!error) {
+      const newCount = resendCount + 1;
+      setResendCount(newCount);
+      localStorage.setItem('resend_count', newCount);
+
+      // 3. If limit reached (3), set 1-hour lockout
+      if (newCount >= 3) {
+        const oneHourFromNow = Date.now() + 3600000; // 1 hour in ms
+        setLockoutUntil(oneHourFromNow);
+        localStorage.setItem('resend_lockout', oneHourFromNow);
+        showToast("Limit reached. Please try again after 1 hour.", "error");
+      } else {
+        showToast(`Link resent! (${newCount}/3) 📧`, "info");
+      }
+    } else {
+      showToast("Could not resend — try again shortly.", "error");
+    }
   };
 
-  const handleVerified = useCallback(() => {
-    showToast("Welcome to LumineX! 🎉", "success");
-    if (setAuthModal) setAuthModal(null);
-    if (onClose)      onClose();
-  }, [showToast, setAuthModal, onClose]);
+  /*
+   * handleVerified — called after email is confirmed (either device).
+   *
+   * The desktop tab has no session yet (user verified on phone), so we
+   * call signInWithPassword using the password they just typed.
+   * This gives the desktop a real session → profile is accessible →
+   * modal closes → app shows home screen as logged in.
+   */
+  // hasSession=true  → same browser, session already active, just close modal
+  // hasSession=false → cross-device (phone), need to sign in on desktop now
+  const handleVerified = useCallback(async (hasSession = false) => {
+    try {
+      if (!hasSession) {
+        // Phone verified — desktop has no session yet, sign in with password
+        const { error } = await supabase.auth.signInWithPassword({
+          email: form.email,
+          password: form.pass,
+        });
+        if (error) throw error;
+      }
+      // At this point session exists on this device (either from magic link or signInWithPassword)
+      const { data: { user } } = await supabase.auth.getUser();
+      const displayName = user?.user_metadata?.display_name || form.name || "there";
+      showToast(`Welcome, ${displayName}! 🎉`, "success");
+    } catch {
+      showToast("Email verified! Please sign in to continue.", "info");
+    } finally {
+      if (setAuthModal) setAuthModal(null);
+      if (onClose) onClose();
+    }
+  }, [form.email, form.pass, form.name, showToast, setAuthModal, onClose]);
 
   /* ── password strength ── */
   const strength = [
@@ -672,24 +787,26 @@ function SignupForm({ onSwitch, onClose }) {
 
   /* ── email right-side indicator ── */
   const emailRight =
-    emailStatus === "checking"   ? <Spinner size={14} /> :
-    emailStatus === "available"  ? <span style={{ color: "#22c55e", fontSize: 14 }}>✓</span> :
-    emailStatus === "registered" ? <span style={{ color: "#f59e0b", fontSize: 17 }}>⚠</span> :
-    null;
+    emailStatus === "checking" ? <Spinner size={14} /> :
+      emailStatus === "available" ? <span style={{ color: "#22c55e", fontSize: 14 }}>✓</span> :
+        emailStatus === "registered" ? <span style={{ color: "#f59e0b", fontSize: 17 }}>⚠</span> :
+          null;
 
-  /* ─────────────── VERIFY SCREEN ─────────────── */
+  /* ── verify screen ── */
   if (step === "verify") {
     return (
       <VerifyEmailPage
         email={form.email}
+        password={form.pass}
         onVerified={handleVerified}
+        isLocked={isLocked}
         onChangeEmail={() => setStep(1)}
         onResend={handleResendLink}
       />
     );
   }
 
-  /* ─────────────── MAIN RENDER ─────────────── */
+  /* ── main form ── */
   return (
     <div className="fade-up">
       <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px", fontFamily: "'Syne',sans-serif", color: C.text }}>Create account 🚀</h2>
@@ -712,15 +829,8 @@ function SignupForm({ onSwitch, onClose }) {
       {/* ══ STEP 1 ══ */}
       {step === 1 && (
         <>
-          <Input
-            label="Full Name" icon="👤"
-            value={form.name}
-            onChange={set("name")}
-            placeholder="Your name"
-            error={errors.name}
-          />
+          <Input label="Full Name" icon="👤" value={form.name} onChange={set("name")} placeholder="Your name" error={errors.name} />
 
-          {/* Username */}
           <div>
             <Input
               label="Username" icon="@"
@@ -731,9 +841,9 @@ function SignupForm({ onSwitch, onClose }) {
               right={
                 form.username.length >= 3
                   ? unStatus === "checking" ? <Spinner size={14} />
-                  : unStatus === "ok"       ? <span style={{ color: "#22c55e", fontSize: 14 }}>✓</span>
-                  : unStatus === "taken"    ? <span style={{ color: C.red, fontSize: 14 }}>✗</span>
-                  : null
+                    : unStatus === "ok" ? <span style={{ color: "#22c55e", fontSize: 14 }}>✓</span>
+                      : unStatus === "taken" ? <span style={{ color: C.red, fontSize: 14 }}>✗</span>
+                        : null
                   : null
               }
             />
@@ -744,24 +854,16 @@ function SignupForm({ onSwitch, onClose }) {
             )}
           </div>
 
-          {/* Email — uses onEmailChange defined above */}
           <Input
             label="Email" type="email" icon="📧"
             value={form.email}
             onChange={onEmailChange}
-            onBlur={() => {
-              if (validateEmail(form.email) && !emailStatus) {
-                checkEmail(form.email);
-              }
-            }}
+            onBlur={() => validateEmail(form.email) && !emailStatus && checkEmail(form.email)}
             placeholder="you@example.com"
             error={errors.email}
             right={emailRight}
           />
-          <EmailStatusHint
-            status={emailStatus}
-            onLoginClick={() => onSwitch("login")}
-          />
+          <EmailStatusHint status={emailStatus} onLoginClick={() => onSwitch("login")} />
 
           <Divider label="or sign up with" />
           <GoogleBtn />
@@ -780,11 +882,9 @@ function SignupForm({ onSwitch, onClose }) {
       {/* ══ STEP 2 ══ */}
       {step === 2 && (
         <>
-          {/* Avatar picker */}
+          {/* Avatar */}
           <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: .6, margin: "0 0 10px" }}>
-              Choose Avatar
-            </p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: .6, margin: "0 0 10px" }}>Choose Avatar</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {AVATARS.map(av => (
                 <button
@@ -792,15 +892,12 @@ function SignupForm({ onSwitch, onClose }) {
                   onClick={() => set("avatarId")(av.id)}
                   title={av.label}
                   style={{
-                    width: 42, height: 42, borderRadius: "50%",
-                    background: av.bg,
+                    width: 42, height: 42, borderRadius: "50%", background: av.bg,
                     border: `2px solid ${form.avatarId === av.id ? C.accent : "transparent"}`,
                     fontSize: 20, cursor: "pointer",
                     transform: form.avatarId === av.id ? "scale(1.18)" : "scale(1)",
-                    boxShadow: form.avatarId === av.id
-                      ? `0 0 0 3px color-mix(in srgb,${C.accent} 25%,transparent)` : "none",
-                    transition: "all .2s",
-                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: form.avatarId === av.id ? `0 0 0 3px color-mix(in srgb,${C.accent} 25%,transparent)` : "none",
+                    transition: "all .2s", display: "flex", alignItems: "center", justifyContent: "center",
                   }}
                 >
                   {av.emoji}
@@ -809,7 +906,6 @@ function SignupForm({ onSwitch, onClose }) {
             </div>
           </div>
 
-          {/* Password */}
           <Input label="Password" type="password" icon="🔒" value={form.pass} onChange={set("pass")} placeholder="Min 8 chars" error={errors.pass} />
           {form.pass && (
             <div style={{ marginTop: -10, marginBottom: 14 }}>
@@ -825,27 +921,16 @@ function SignupForm({ onSwitch, onClose }) {
           <Input label="Confirm Password" type="password" icon="🔒" value={form.confirm} onChange={set("confirm")} placeholder="Repeat password" error={errors.confirm} />
           <Input label="Date of Birth" type="date" icon="🎂" value={form.dob} onChange={set("dob")} error={errors.dob} hint="You must be 18+ to join" />
 
-          {/* Terms */}
           <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", marginBottom: errors.agree ? 4 : 20 }}>
-            <input
-              type="checkbox"
-              checked={form.agree}
-              onChange={set("agree")}
-              style={{ accentColor: C.accent, width: 16, height: 16, marginTop: 2, flexShrink: 0 }}
-            />
+            <input type="checkbox" checked={form.agree} onChange={set("agree")} style={{ accentColor: C.accent, width: 16, height: 16, marginTop: 2, flexShrink: 0 }} />
             <span style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
               I agree to the <span style={{ color: C.accent }}>Terms</span> &amp; <span style={{ color: C.accent }}>Privacy Policy</span> and confirm I'm 18+.
             </span>
           </label>
           {errors.agree && <div style={{ fontSize: 11, color: C.red, marginBottom: 14 }}>⚠ {errors.agree}</div>}
 
-          {/* Back / Submit */}
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => setStep(1)}
-              className="btn-ghost"
-              style={{ flex: 1, padding: "12px", fontSize: 13, color: C.muted }}
-            >
+            <button onClick={() => setStep(1)} className="btn-ghost" style={{ flex: 1, padding: "12px", fontSize: 13, color: C.muted }}>
               ← Back
             </button>
             <button
@@ -855,10 +940,7 @@ function SignupForm({ onSwitch, onClose }) {
               style={{ flex: 2.2, padding: "12px 16px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
             >
               {loading ? (
-                <>
-                  <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} />
-                  Sending link…
-                </>
+                <><div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} /> Sending link…</>
               ) : "Create Account 🎉"}
             </button>
           </div>
@@ -878,15 +960,15 @@ function SignupForm({ onSwitch, onClose }) {
 ═══════════════════════════════════════════════════════════════════ */
 function ForgotForm({ onSwitch }) {
   const { showToast } = useApp();
-  const [step,    setStep]    = useState(1);
-  const [email,   setEmail]   = useState("");
-  const [otp,     setOtp]     = useState(["", "", "", "", "", ""]);
-  const [pass,    setPass]    = useState("");
+  const [step, setStep] = useState(1);
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [pass, setPass] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
-  const [timer,   setTimer]   = useState(60);
-  
+  const [error, setError] = useState("");
+  const [timer, setTimer] = useState(60);
+
   const refs = useRef([]);
 
   useEffect(() => {
@@ -902,11 +984,8 @@ function ForgotForm({ onSwitch }) {
       await authAPI.resetPassword(email);
       setStep(2); setTimer(60);
       showToast("Reset link sent!", "success");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
   const verifyOtp = () => {
@@ -915,17 +994,12 @@ function ForgotForm({ onSwitch }) {
   };
 
   const resetPass = async () => {
-    if (pass.length < 8)   { setError("At least 8 characters"); return; }
-    if (pass !== confirm)  { setError("Passwords don't match"); return; }
+    if (pass.length < 8) { setError("At least 8 characters"); return; }
+    if (pass !== confirm) { setError("Passwords don't match"); return; }
     setError(""); setLoading(true);
-    try {
-      await authAPI.updatePassword(pass);
-      setStep(4);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    try { await authAPI.updatePassword(pass); setStep(4); }
+    catch (e) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
   const handleOtp = (i, val) => {
@@ -935,7 +1009,7 @@ function ForgotForm({ onSwitch }) {
   };
 
   const titles = ["", "Reset Password", "Check Your Email", "New Password", "Done! 🎉"];
-  const subs   = ["", "Enter your registered email", `Code sent to ${email}`, "Choose a strong password", "Password updated!"];
+  const subs = ["", "Enter your registered email", `Code sent to ${email}`, "Choose a strong password", "Password updated!"];
 
   return (
     <div className="fade-up">
@@ -960,11 +1034,9 @@ function ForgotForm({ onSwitch }) {
                 onKeyDown={e => { if (e.key === "Backspace" && !v && i > 0) refs[i - 1].current?.focus(); }}
                 style={{
                   width: 44, height: 52, textAlign: "center",
-                  fontSize: 20, fontWeight: 800,
-                  background: C.bg3,
+                  fontSize: 20, fontWeight: 800, background: C.bg3,
                   border: `2px solid ${v ? C.accent : C.border}`,
-                  borderRadius: 10, color: C.text,
-                  fontFamily: "inherit", outline: "none",
+                  borderRadius: 10, color: C.text, fontFamily: "inherit", outline: "none",
                   transition: "border-color .18s",
                 }}
               />
@@ -982,7 +1054,7 @@ function ForgotForm({ onSwitch }) {
 
       {step === 3 && (
         <>
-          <Input label="New Password"     type="password" icon="🔒" value={pass}    onChange={e => setPass(e.target.value)}    placeholder="Min 8 characters" />
+          <Input label="New Password" type="password" icon="🔒" value={pass} onChange={e => setPass(e.target.value)} placeholder="Min 8 characters" />
           <Input label="Confirm Password" type="password" icon="🔒" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repeat new password" />
           {error && <div style={{ fontSize: 12, color: C.red, marginBottom: 14 }}>⚠ {error}</div>}
           <Btn onClick={resetPass} loading={loading} fullWidth size="lg">Reset Password →</Btn>
