@@ -71,7 +71,7 @@ export function AppProvider({ children }) {
     }
   };
 
-    const showToast = useCallback((msg, type = "info") => {
+  const showToast = useCallback((msg, type = "info") => {
     clearTimeout(toastTimer.current);
     setToast({ msg, type, id: Date.now() });
     toastTimer.current = setTimeout(() => setToast(null), 2800);
@@ -79,20 +79,20 @@ export function AppProvider({ children }) {
 
 
 
-useEffect(() => {
-  // This listener is the "bridge" between your phone and laptop
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    console.log("Auth Event:", event); // Debug to see the magic happen
-    setSession(session);
+  useEffect(() => {
+    // This listener is the "bridge" between your phone and laptop
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth Event:", event); // Debug to see the magic happen
+      setSession(session);
 
-    // If a session appears (from phone verification) or user signs in
-    if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
-      setAuthModal(null); // This will close the modal on your laptop!
-    }
-  });
+      // If a session appears (from phone verification) or user signs in
+      if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
+        setAuthModal(null); // This will close the modal on your laptop!
+      }
+    });
 
-  return () => subscription.unsubscribe();
-}, []);
+    return () => subscription.unsubscribe();
+  }, []);
 
 
   const playVideo = useCallback((video) => {
@@ -100,11 +100,28 @@ useEffect(() => {
     setPlayer(video);
   }, [profile]);
 
+  // Inside AppProvider in AppContext.js
   const signOut = useCallback(async () => {
-    await authAPI.signOut();
-    setSession(null); setProfile(null); setNotifCount(0);
-    showToast("Signed out", "success");
-  }, [showToast]);
+    try {
+      await authAPI.signOut();
+
+      // 1. Clear User Data
+      setSession(null);
+      setProfile(null);
+      setNotifCount(0);
+
+      setTab("home");
+
+      setVipModal(false);
+      setUploadModal(false);
+      setNotifOpen(false);
+
+      showToast("Signed out", "success");
+    } catch (error) {
+      showToast("Error signing out", "error");
+    }
+  }, [showToast, setTab]); // Add setTab to the dependency array
+
 
   const refreshProfile = useCallback(() => {
     if (session?.user?.id) loadProfile(session.user.id);
@@ -113,9 +130,9 @@ useEffect(() => {
   return (
     <Ctx.Provider value={{
       session, profile, authReady,
-      player, setPlayer, playVideo,activeProfile,setActiveProfile,
+      player, setPlayer, playVideo, activeProfile, setActiveProfile,
       search, setSearch,
-      toast, showToast,setTab,
+      toast, showToast, setTab,
       tab,
       authModal, setAuthModal,
       vipModal, setVipModal,
