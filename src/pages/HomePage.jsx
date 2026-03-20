@@ -141,12 +141,14 @@ useEffect(() => {
 
   const loadVideos = useCallback(async (reset = false) => {
     setLoading(true);
+    if (reset) setVideos([]);
     try {
       const nextPage = reset ? 0 : page;
       let data = [];
 
       // 1. History Tab Logic
       if (tab === "history") {
+        if (reset) setPage(0);
         if (session?.user?.id) {
           data = await historyAPI.getHistory(session.user.id);
         }
@@ -183,10 +185,14 @@ useEffect(() => {
           followingIds: followingIds?.length ? followingIds : null
         }).catch(() => DEMO_VIDEOS.slice(nextPage * LIMIT, (nextPage + 1) * LIMIT));
       }
+      console.log('dada',data)
 
       const filtered = (data || []).filter(v => !catFilter || v.category === catFilter);
 
-      if (reset) setVideos(filtered);
+      if (reset) 
+        
+          setVideos(filtered);
+        
       else setVideos(prev => [...prev, ...filtered]);
 
       setHasMore(data?.length === LIMIT);
