@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { C, SectionHeader, HScroll, FilterChip, Skeleton, EmptyState, fmtNum } from "../components/ui/index";
+import { C, SectionHeader, HScroll, FilterChip, Skeleton, EmptyState, fmtNum,VerifiedBadge } from "../components/ui/index";
 import { useApp } from "../context/AppContext";
 import { videoAPI, followAPI, likeAPI, historyAPI } from "../lib/supabase"; // Ensure historyAPI is imported
 import { useIsMobile, useInfiniteScroll } from "../hooks/index";
@@ -101,6 +101,123 @@ const FILTERS = [
   { label: "👑 VIP", value: "vip" }, { label: "Free", value: "free" },
 ];
 
+
+// ── User Follow Card ─────────────────────────────────────────────────────────
+function UserFollowCard({ user }) {
+  const { setTab, setActiveProfile } = useApp();
+  const [followed, setFollowed] = useState(false);
+  const [hov, setHov] = useState(false);
+
+  const handleFollow = (e) => {
+    e.stopPropagation();
+    setFollowed(!followed);
+    // You can add your followAPI.toggleFollow here
+  };
+
+  const goToProfile = () => {
+    setActiveProfile(user);
+    setTab(`profile:${user.username}`);
+  };
+
+  return (
+    <div 
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      onClick={goToProfile}
+      style={{
+        flexShrink: 0,
+        width: 130,
+        padding: "20px 10px",
+        background: hov ? C.bg3 : C.bg2,
+        borderRadius: 20,
+        border: `1px solid ${hov ? C.accent + "66" : C.border}`,
+        textAlign: "center",
+        cursor: "pointer",
+        transition: "all 0.3s ease",
+        transform: hov ? "translateY(-5px)" : "none",
+        boxShadow: hov ? `0 10px 20px rgba(0,0,0,0.4)` : "none",
+      }}
+    >
+      <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
+        <img 
+          src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} 
+          style={{ 
+            width: 70, height: 70, borderRadius: "50%", 
+            border: `2px solid ${followed ? C.green : C.accent}`,
+            padding: 3,
+            transition: "transform 0.3s ease",
+            transform: hov ? "scale(1.1)" : "scale(1)"
+          }} 
+        />
+        {user.is_verified && (
+          <div style={{ position: "absolute", bottom: 0, right: 0, background: C.bg, borderRadius: "50%", padding: 2 }}>
+            <VerifiedBadge size={14} />
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {user.username}
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>
+        {fmtNum(user.follower_count || 0)} fans
+      </div>
+
+      <button 
+        onClick={handleFollow}
+        style={{
+          width: "100%",
+          padding: "6px 0",
+          borderRadius: 10,
+          background: followed ? C.bg3 : `linear-gradient(135deg, ${C.accent}, ${C.accent2})`,
+          border: followed ? `1px solid ${C.border}` : "none",
+          color: followed ? C.muted : "white",
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: "pointer",
+          transition: "all 0.2s"
+        }}
+      >
+        {followed ? "✓ Following" : "+ Follow"}
+      </button>
+    </div>
+  );
+}
+
+// ── User Carousel Section ────────────────────────────────────────────────────
+function UserSuggestions() {
+  const isMobile = useIsMobile();
+  // Placeholder Data - Replace with a real API call to get top creators
+  const topUsers = [
+    { username: "AlexStream", follower_count: 12400, is_verified: true },
+    { username: "SarahVlog", follower_count: 8900, is_verified: true },
+    { username: "TechGuru", follower_count: 45000, is_verified: false },
+    { username: "ChefElite", follower_count: 3200, is_verified: true },
+    { username: "GamerPro", follower_count: 102000, is_verified: true },
+    { username: "TravelWithMe", follower_count: 15400, is_verified: false },
+  ];
+
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <SectionHeader title="🌟 Suggested Creators" />
+      <div style={{ 
+        display: "flex", 
+        gap: 15, 
+        overflowX: "auto", 
+        scrollbarWidth: "none", 
+        padding: "10px 0" 
+      }}>
+        {topUsers.map(user => (
+          <UserFollowCard key={user.username} user={user} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+
+
 export default function HomePage({ tab }) {
   const { session, playVideo, setTab } = useApp();
   const isMobile = useIsMobile();
@@ -117,27 +234,27 @@ export default function HomePage({ tab }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [tab, catFilter, filter]);
 
-useEffect(() => {
-  const handleSaveUpdate = (e) => {
-    // 1. Extract the data from the event
-    const { videoId, isSaved } = e.detail;
+  useEffect(() => {
+    const handleSaveUpdate = (e) => {
+      // 1. Extract the data from the event
+      const { videoId, isSaved } = e.detail;
 
-    // 2. Check if we are currently looking at the "saved" tab
-    // Note: Ensure 'tab' is the state variable you use for navigation
-    if (tab === "saved" && !isSaved) {
-      // 3. Filter out the video from the local state immediately
-      setVideos(prev => prev.filter(v => v.id !== videoId));
-    }
-  };
+      // 2. Check if we are currently looking at the "saved" tab
+      // Note: Ensure 'tab' is the state variable you use for navigation
+      if (tab === "saved" && !isSaved) {
+        // 3. Filter out the video from the local state immediately
+        setVideos(prev => prev.filter(v => v.id !== videoId));
+      }
+    };
 
-  // 4. Set up the listener
-  window.addEventListener('video_save_updated', handleSaveUpdate);
+    // 4. Set up the listener
+    window.addEventListener('video_save_updated', handleSaveUpdate);
 
-  // 5. Clean up
-  return () => {
-    window.removeEventListener('video_save_updated', handleSaveUpdate);
-  };
-}, [tab]); // Critical: dependency on 'tab' so it knows current view
+    // 5. Clean up
+    return () => {
+      window.removeEventListener('video_save_updated', handleSaveUpdate);
+    };
+  }, [tab]); // Critical: dependency on 'tab' so it knows current view
 
   const loadVideos = useCallback(async (reset = false) => {
     setLoading(true);
@@ -185,14 +302,13 @@ useEffect(() => {
           followingIds: followingIds?.length ? followingIds : null
         }).catch(() => DEMO_VIDEOS.slice(nextPage * LIMIT, (nextPage + 1) * LIMIT));
       }
-      console.log('dada',data)
-
+   
       const filtered = (data || []).filter(v => !catFilter || v.category === catFilter);
 
-      if (reset) 
-        
-          setVideos(filtered);
-        
+      if (reset)
+
+        setVideos(filtered);
+
       else setVideos(prev => [...prev, ...filtered]);
 
       setHasMore(data?.length === LIMIT);
@@ -253,12 +369,21 @@ useEffect(() => {
         </div>
       )}
 
-      {tab === "home" && !catFilter && trending.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <SectionHeader title="🔥 Trending Now" />
-          <HScroll hideArrows={isMobile} >{trending.map(v => <VideoCard key={v.id} video={v} cardWidth={isMobile ? 200 : 260} />)}</HScroll>
-        </div>
-      )}
+    {tab === "home" && !catFilter && (
+  <>
+    {/* ── NEW SECTION ADDED HERE ── */}
+    <UserSuggestions />
+
+    {trending.length > 0 && (
+      <div style={{ marginBottom: 28 }}>
+        <SectionHeader title="🔥 Trending Now" />
+        <HScroll hideArrows={isMobile}>
+          {trending.map(v => <VideoCard key={v.id} video={v} cardWidth={isMobile ? 200 : 260} />)}
+        </HScroll>
+      </div>
+    )}
+  </>
+)}
 
       {tab === "home" && !catFilter && (
         <div style={{ marginBottom: 28 }}>
@@ -293,50 +418,44 @@ useEffect(() => {
       ) : (
         <>
           {tab === "history" ? (
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: isMobile ? '10px' : '20px' }}>
-              {displayed.map((video) => (
-                <div
-                  key={video.historyId || video.id}
-                  style={{ position: 'relative', cursor: 'pointer' }}
-                  onClick={() => playVideo(video)}
-                >
-                  {/* Individual Delete Button */}
-                  <button
-                    onClick={(e) => handleDeleteHistory(e, video.historyId)}
-                    style={{
-                      position: 'absolute',
-                      top: 8,
-                      left: 8, // Changed from right to left
-                      zIndex: 10,
-                      background: 'rgba(0,0,0,0.7)',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: 28,
-                      height: 28,
-                      color: 'white',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '14px',
-                      transition: 'transform 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  >
-                    ✕
-                  </button>
-                  <VideoCard video={video} />
-                  <div style={{ marginTop: '8px', padding: '0 4px' }}>
-                    <div style={{ fontSize: '12px', color: C.text, fontWeight: '600', marginBottom: 4 }}>{video.title}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: C.muted }}>
-                      <span> {fmtNum(video.views || 0)} views</span>
-                      <span>{new Date(video.watched_at).toLocaleDateString()}</span>
+            <>
+              {/* Show Skeletons if loading and we have no videos yet */}
+              {loading && videos.length === 0 ? (
+                <VideoGrid videos={[]} loading={true} />
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: isMobile ? '10px' : '20px' }}>
+                  {displayed.map((video) => (
+                    <div
+                      key={video.historyId || video.id}
+                      style={{ position: 'relative', cursor: 'pointer' }}
+                      onClick={() => playVideo(video)}
+                    >
+                      {/* Delete Button */}
+                      <button
+                        onClick={(e) => handleDeleteHistory(e, video.historyId)}
+                        style={{
+                          position: 'absolute', top: 8, left: 8, zIndex: 10,
+                          background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%',
+                          width: 28, height: 28, color: 'white', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '14px', transition: 'transform 0.2s'
+                        }}
+                      >
+                        ✕
+                      </button>
+                      <VideoCard video={video} />
+                      <div style={{ marginTop: '8px', padding: '0 4px' }}>
+                        <div style={{ fontSize: '12px', color: C.text, fontWeight: '600', marginBottom: 4 }}>{video.title}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: C.muted }}>
+                          <span> {fmtNum(video.views || 0)} views</span>
+                          <span>{video.watched_at ? new Date(video.watched_at).toLocaleDateString() : ''}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
             <VideoGrid videos={displayed} loading={loading && videos.length === 0} />
           )}
