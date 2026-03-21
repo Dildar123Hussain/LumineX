@@ -7,6 +7,42 @@ import { DUMMY_COMMENTS } from "../../data/theme";
 /* ─────────────────────────────────────────────────────────────
    LIKE BUTTON
 ───────────────────────────────────────────────────────────── */
+
+// Add this to your UI components or top of CommentSection.jsx
+const CommentSkeleton = () => (
+  <div style={{ padding: "12px 0", display: "flex", gap: 12, animation: "pulse 1.5s infinite ease-in-out" }}>
+    <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.bg3 }} />
+    <div style={{ flex: 1 }}>
+      <div style={{ width: "30%", height: 10, background: C.bg3, borderRadius: 4, marginBottom: 8 }} />
+      <div style={{ width: "90%", height: 12, background: C.bg3, borderRadius: 4, marginBottom: 4 }} />
+      <div style={{ width: "60%", height: 12, background: C.bg3, borderRadius: 4 }} />
+    </div>
+  </div>
+);
+
+// Add this animation to your global CSS or a <style> tag in PlayerModal
+const skeletonStyle = `
+  @keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+  }
+`;
+
+// Add this right after your imports
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
 function LikeBtn({ liked, count, onToggle, small }) {
   const [bounce, setBounce] = useState(false);
   const h = () => {
@@ -398,11 +434,11 @@ function CommentItem({
           <div style={{ display: "flex", gap: 14, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: C.muted }}>{timeAgo(comment.created_at)}</span>
 
-            {comment.likes_count > 0 && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>
-                {comment.likes_count} like{comment.likes_count !== 1 ? "s" : ""}
-              </span>
-            )}
+          {comment.likes_count > 0 && (
+  <span style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>
+    {fmtNum(comment.likes_count)} {comment.likes_count === 1 ? "like" : "likes"}
+  </span>
+)}
 
             <button
               onClick={() => setReplying(!replying)}
@@ -472,7 +508,7 @@ function CommentItem({
                   }}
                 >
                   <div style={{ width: 20, height: 1, background: C.border }} />
-                  View {comment.replies.length} {comment.replies.length === 1 ? "reply" : "replies"}
+                 View {fmtNum(comment.replies.length)} {comment.replies.length === 1 ? "reply" : "replies"}
                 </button>
               ) : (
                 <>
@@ -658,7 +694,7 @@ export default function CommentSection({ videoId, videoOwnerId }) {
             background: C.bg3, border: `1px solid ${C.border}`,
             borderRadius: 99, padding: "2px 10px", color: C.muted,
           }}>
-            {comments.length + totalReplies}
+            {fmtNum(comments.length + totalReplies)}
           </span>
         </div>
 
@@ -693,8 +729,10 @@ export default function CommentSection({ videoId, videoOwnerId }) {
 
       {/* List */}
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-          <Spinner />
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[...Array(5)].map((_, i) => (
+            <CommentSkeleton key={i} />
+          ))}
         </div>
       ) : displayed.length === 0 ? (
         <div style={{ textAlign: "center", padding: "40px 20px", color: C.muted }}>
