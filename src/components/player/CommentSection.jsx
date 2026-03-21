@@ -312,9 +312,10 @@ function CommentItem({
     // 2. If the comment section is inside a player/modal, 
     // we should close the player to see the profile clearly
     // (Matches your PlayerModal logic)
-    if (setPlayer) setPlayer(null);
+    //if (setPlayer) setPlayer(null);
 
     // 3. Reset scroll position so the profile page starts at the top
+    window.dispatchEvent(new CustomEvent('lx_pause_video'));
     window.scrollTo(0, 0);
 
     // 4. Use a small timeout to let the modal close/state update 
