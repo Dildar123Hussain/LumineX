@@ -78,11 +78,11 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   // ── viewIncremented ref declared BEFORE any useEffect that uses it ──
   const viewIncremented = useRef(false);
 
-const [video, setVideo] = useState(() => {
+  const [video, setVideo] = useState(() => {
     // 1. Check if we have a newer version saved in memory
     const cached = sessionStorage.getItem(`video_${initVideo.id}`);
     const latestData = cached ? JSON.parse(cached) : initVideo;
-    
+
     return {
       ...latestData,
       views: Number(latestData.views_count ?? latestData.views ?? 0),
@@ -136,16 +136,16 @@ const [video, setVideo] = useState(() => {
     if (!playing || viewIncremented.current) return;
     const timer = setTimeout(async () => {
       try {
-    const newViewCount = await videoAPI.incrementViews(video.id);
-const updatedVideo = { ...video, views: newViewCount, views_count: newViewCount };
+        const newViewCount = await videoAPI.incrementViews(video.id);
+        const updatedVideo = { ...video, views: newViewCount, views_count: newViewCount };
 
-// Save to memory so the Home Page and Player stay in sync
-sessionStorage.setItem(`video_${video.id}`, JSON.stringify(updatedVideo));
+        // Save to memory so the Home Page and Player stay in sync
+        sessionStorage.setItem(`video_${video.id}`, JSON.stringify(updatedVideo));
 
-setVideo(updatedVideo);
-window.dispatchEvent(new CustomEvent("video_view_updated", {
-  detail: { videoId: video.id, views: newViewCount },
-}));
+        setVideo(updatedVideo);
+        window.dispatchEvent(new CustomEvent("video_view_updated", {
+          detail: { videoId: video.id, views: newViewCount },
+        }));
         viewIncremented.current = true;
       } catch (err) {
         console.error("Failed to increment view:", err);
@@ -173,7 +173,7 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
     setRelated(DEMO_VIDEOS.filter(v => v.id !== video.id));
     videoAPI.getFeed({ limit: 100 })
       .then(data => { if (data?.length) setRelated(data.filter(v => v.id !== video.id)); })
-      .catch(() => {});
+      .catch(() => { });
   }, [video.id]);
 
   // Watch history
@@ -190,24 +190,24 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
   useEffect(() => {
     const v = vRef.current; if (!v) return;
     setIsBuffering(true); setBuffered(0); setProg(0); setCurTime(0); setDur(0);
-    const tryPlay = () => v.play().then(() => setPlaying(true)).catch(() => {});
+    const tryPlay = () => v.play().then(() => setPlaying(true)).catch(() => { });
     if (v.readyState >= 2) tryPlay(); else v.addEventListener("canplay", tryPlay, { once: true });
     const upd = () => { setCurTime(v.currentTime); setDur(v.duration || 0); setProg(v.duration ? (v.currentTime / v.duration) * 100 : 0); };
-    const onWaiting  = () => setIsBuffering(true);
-    const onPlay2    = () => setIsBuffering(false);
-    const onSeeking  = () => setIsBuffering(true);
-    const onSeeked   = () => setIsBuffering(false);
+    const onWaiting = () => setIsBuffering(true);
+    const onPlay2 = () => setIsBuffering(false);
+    const onSeeking = () => setIsBuffering(true);
+    const onSeeked = () => setIsBuffering(false);
     const onProgress = () => { if (v.buffered.length && v.duration) setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100); };
-    const onEnded    = () => startAutoCountdown();
-    v.addEventListener("timeupdate",    upd);       v.addEventListener("loadedmetadata", upd);
-    v.addEventListener("waiting",       onWaiting); v.addEventListener("playing",        onPlay2);
-    v.addEventListener("seeking",       onSeeking); v.addEventListener("seeked",         onSeeked);
-    v.addEventListener("progress",      onProgress); v.addEventListener("ended",          onEnded);
+    const onEnded = () => startAutoCountdown();
+    v.addEventListener("timeupdate", upd); v.addEventListener("loadedmetadata", upd);
+    v.addEventListener("waiting", onWaiting); v.addEventListener("playing", onPlay2);
+    v.addEventListener("seeking", onSeeking); v.addEventListener("seeked", onSeeked);
+    v.addEventListener("progress", onProgress); v.addEventListener("ended", onEnded);
     return () => {
-      v.removeEventListener("timeupdate",    upd);       v.removeEventListener("loadedmetadata", upd);
-      v.removeEventListener("waiting",       onWaiting); v.removeEventListener("playing",        onPlay2);
-      v.removeEventListener("seeking",       onSeeking); v.removeEventListener("seeked",         onSeeked);
-      v.removeEventListener("progress",      onProgress); v.removeEventListener("ended",          onEnded);
+      v.removeEventListener("timeupdate", upd); v.removeEventListener("loadedmetadata", upd);
+      v.removeEventListener("waiting", onWaiting); v.removeEventListener("playing", onPlay2);
+      v.removeEventListener("seeking", onSeeking); v.removeEventListener("seeked", onSeeked);
+      v.removeEventListener("progress", onProgress); v.removeEventListener("ended", onEnded);
       clearTimeout(ctrlTimer.current); clearTimeout(flashTimer.current); clearInterval(autoTimer.current);
     };
   }, [video.id, video.video_url]);
@@ -216,10 +216,10 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
   useEffect(() => { if (!session) return; likeAPI.isSaved(session.user.id, video.id).then(setSaved); }, [session, video.id]);
   useEffect(() => {
     const fn = () => setIsFS(!!(document.fullscreenElement || document.webkitFullscreenElement));
-    document.addEventListener("fullscreenchange",       fn);
+    document.addEventListener("fullscreenchange", fn);
     document.addEventListener("webkitfullscreenchange", fn);
     return () => {
-      document.removeEventListener("fullscreenchange",       fn);
+      document.removeEventListener("fullscreenchange", fn);
       document.removeEventListener("webkitfullscreenchange", fn);
     };
   }, []);
@@ -259,7 +259,7 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
 
   const togglePlay = useCallback(() => {
     const v = vRef.current; if (!v) return;
-    if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => {}); revealCtrl(); }
+    if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => { }); revealCtrl(); }
     else { v.pause(); setPlaying(false); setShowCtrl(true); clearTimeout(ctrlTimer.current); }
   }, [revealCtrl]);
 
@@ -275,13 +275,13 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
 
   const enterFS = useCallback(() => {
     const el = wrapRef.current; if (!el) return;
-    try { if (window.screen.orientation?.lock) window.screen.orientation.lock("landscape").catch(() => {}); } catch (e) {}
-    const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) req.call(el).catch(() => {});
+    try { if (window.screen.orientation?.lock) window.screen.orientation.lock("landscape").catch(() => { }); } catch (e) { }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) req.call(el).catch(() => { });
   }, []);
 
   const exitFS = useCallback(() => {
-    try { if (window.screen.orientation?.unlock) window.screen.orientation.unlock(); } catch (e) {}
-    const ex = document.exitFullscreen || document.webkitExitFullscreen; if (ex) ex.call(document).catch(() => {});
+    try { if (window.screen.orientation?.unlock) window.screen.orientation.unlock(); } catch (e) { }
+    const ex = document.exitFullscreen || document.webkitExitFullscreen; if (ex) ex.call(document).catch(() => { });
   }, []);
 
   const toggleFS = useCallback(() => { if (isFS) exitFS(); else enterFS(); revealCtrl(); }, [isFS, enterFS, exitFS, revealCtrl]);
@@ -291,7 +291,7 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
       if (e.key === "Escape") { if (isFS) exitFS(); else onClose(); return; }
       if (e.key === " ") { e.preventDefault(); togglePlay(); }
       if (e.key === "ArrowRight") seekBy(10);
-      if (e.key === "ArrowLeft")  seekBy(-10);
+      if (e.key === "ArrowLeft") seekBy(-10);
       if (e.key === "f" || e.key === "F") toggleFS();
       if (e.key === "n" || e.key === "N") playNext();
     };
@@ -356,19 +356,27 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
     buffered, isBuffering,
     togglePlay, seekBy, toggleFS,
     setSpeedTo: s => { const v = vRef.current; if (v) v.playbackRate = s; setSpeed(s); },
-    onMute:   () => { const v = vRef.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); },
-    onVolume: n  => { setVol(n); if (vRef.current) { vRef.current.volume = n; vRef.current.muted = n === 0; setMuted(n === 0); } },
+    onMute: () => { const v = vRef.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); },
+    onVolume: n => { setVol(n); if (vRef.current) { vRef.current.volume = n; vRef.current.muted = n === 0; setMuted(n === 0); } },
   };
 
   const pf = video.profiles || {};
 
   const handleProfileClick = (e) => {
     if (e) e.stopPropagation();
-    const profileData = video?.user || pf;
+    const profileData = video?.profiles || pf;
+    const identifier = profileData?.username || profileData?.id;
+    if (!identifier) return;
+
+    // Close player first, then navigate on next tick
+    // so the profile page renders cleanly without the modal on top
     if (onClose) onClose(); else setPlayer(null);
     window.scrollTo(0, 0);
-    setActiveProfile(profileData);
-    setTab(`profile`);
+
+    setTimeout(() => {
+      setActiveProfile(profileData);
+      setTab(`profile:${identifier}`);
+    }, 50);
   };
 
   return (
@@ -399,7 +407,7 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
               ref={vRef}
               src={video.video_url}
               playsInline
-              onPlay={()  => setPlaying(true)}
+              onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onClick={!isMobile ? togglePlay : undefined}
@@ -457,7 +465,7 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
               onClick={handleProfileClick}
               style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", transition: "all 0.2s ease", padding: "4px 8px", marginLeft: "-8px", borderRadius: "8px" }}
               onMouseEnter={e => { e.currentTarget.style.opacity = 0.8; const n = e.currentTarget.querySelector(".profile-name-text"); if (n) n.style.textDecoration = "underline"; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = 1;   const n = e.currentTarget.querySelector(".profile-name-text"); if (n) n.style.textDecoration = "none"; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = 1; const n = e.currentTarget.querySelector(".profile-name-text"); if (n) n.style.textDecoration = "none"; }}
             >
               <Avatar profile={pf} size={isMobile ? 34 : 42} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -529,9 +537,9 @@ window.dispatchEvent(new CustomEvent("video_view_updated", {
                 onClick={() => setDisplayLimit(p => p + 20)}
                 style={loadMoreButtonStyle}
                 onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px) scale(1.02)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.4)"; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0) scale(1)";      e.currentTarget.style.boxShadow = "0 4px 15px rgba(0,0,0,0.3)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0) scale(1)"; e.currentTarget.style.boxShadow = "0 4px 15px rgba(0,0,0,0.3)"; }}
                 onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
-                onMouseUp={e =>   e.currentTarget.style.transform = "scale(1.02)"}
+                onMouseUp={e => e.currentTarget.style.transform = "scale(1.02)"}
               >
                 Show More Videos
               </button>
