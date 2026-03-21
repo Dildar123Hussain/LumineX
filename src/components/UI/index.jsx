@@ -123,14 +123,46 @@ export function FilterChip({ label, active, onClick, icon }) {
   );
 }
 
-export function HScroll({ children }) {
+export function HScroll({ children, hideArrows }) { // Added hideArrows here
   const ref = useRef(null);
   const s = d => ref.current?.scrollBy({ left: d * 280, behavior: "smooth" });
+
   return (
     <div style={{ position: "relative" }}>
-      <button onClick={() => s(-1)} style={{ position: "absolute", left: -14, top: "38%", transform: "translateY(-50%)", width: 32, height: 32, borderRadius: "50%", background: C.bg2, border: `1px solid ${C.border}`, color: C.text, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5 }}>‹</button>
-      <div ref={ref} style={{ display: "flex", gap: 12, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 4, scrollSnapType: "x mandatory" }}>{children}</div>
-      <button onClick={() => s(1)} style={{ position: "absolute", right: -14, top: "38%", transform: "translateY(-50%)", width: 32, height: 32, borderRadius: "50%", background: C.bg2, border: `1px solid ${C.border}`, color: C.text, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5 }}>›</button>
+      {/* ── Only show Left Arrow if hideArrows is false ── */}
+      {!hideArrows && (
+        <button 
+          onClick={() => s(-1)} 
+          style={{ 
+            position: "absolute", left: -14, top: "38%", transform: "translateY(-50%)", 
+            width: 32, height: 32, borderRadius: "50%", background: C.bg2, 
+            border: `1px solid ${C.border}`, color: C.text, fontSize: 18, 
+            cursor: "pointer", display: "flex", alignItems: "center", 
+            justifyContent: "center", zIndex: 5 
+          }}
+        >‹</button>
+      )}
+
+      <div ref={ref} style={{ 
+        display: "flex", gap: 12, overflowX: "auto", 
+        scrollbarWidth: "none", paddingBottom: 4, scrollSnapType: "x mandatory" 
+      }}>
+        {children}
+      </div>
+
+      {/* ── Only show Right Arrow if hideArrows is false ── */}
+      {!hideArrows && (
+        <button 
+          onClick={() => s(1)} 
+          style={{ 
+            position: "absolute", right: -14, top: "38%", transform: "translateY(-50%)", 
+            width: 32, height: 32, borderRadius: "50%", background: C.bg2, 
+            border: `1px solid ${C.border}`, color: C.text, fontSize: 18, 
+            cursor: "pointer", display: "flex", alignItems: "center", 
+            justifyContent: "center", zIndex: 5 
+          }}
+        >›</button>
+      )}
     </div>
   );
 }
