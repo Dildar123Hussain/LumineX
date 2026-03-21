@@ -184,10 +184,10 @@ function UserFollowCard({ user }) {
   );
 }
 
-// ── User Carousel Section ────────────────────────────────────────────────────
 function UserSuggestions() {
+  const { setTab } = useApp(); // Access setTab from context
   const isMobile = useIsMobile();
-  // Placeholder Data - Replace with a real API call to get top creators
+
   const topUsers = [
     { username: "AlexStream", follower_count: 12400, is_verified: true },
     { username: "SarahVlog", follower_count: 8900, is_verified: true },
@@ -199,13 +199,19 @@ function UserSuggestions() {
 
   return (
     <div style={{ marginBottom: 32 }}>
-      <SectionHeader title="🌟 Suggested Creators" />
-      <div style={{ 
-        display: "flex", 
-        gap: 15, 
-        overflowX: "auto", 
-        scrollbarWidth: "none", 
-        padding: "10px 0" 
+      <SectionHeader 
+        title="🌟 Suggested Creators" 
+        // --- ADD THESE TWO LINES ---
+        action={() => setTab("channels")} 
+        actionLabel="See all" 
+      />
+      
+      <div style={{
+        display: "flex",
+        gap: 15,
+        overflowX: "auto",
+        scrollbarWidth: "none",
+        padding: "10px 0"
       }}>
         {topUsers.map(user => (
           <UserFollowCard key={user.username} user={user} />
@@ -214,7 +220,6 @@ function UserSuggestions() {
     </div>
   );
 }
-
 
 
 
@@ -400,15 +405,23 @@ export default function HomePage({ tab }) {
         {FILTERS.map(f => <FilterChip key={f.value} label={f.label} active={filter === f.value} onClick={() => setFilter(f.value)} />)}
       </div>
 
-      <SectionHeader title={
-        tab === "history" ? "🕒 Watch History" :
-          tab === "trending" ? "🔥 Trending Videos" :
-            tab === "saved" ? "❤️ Saved Videos" :
-              catFilter ? `📂 ${catFilter}` : "🎬 All Videos"
-      }
-        action={tab === "history" && videos.length > 0 ? handleClearAll : null}
-        actionLabel={tab === "history" && videos.length > 0 ? "Clear All" : null}
-      />
+<div style={{ 
+  // Adds extra space at the top ONLY on mobile when not on the home tab
+  marginTop: isMobile && tab !== "home" ? 20 : 0,
+  padding: isMobile ? "0 4px" : 0 
+}}>
+  <SectionHeader 
+    title={
+      tab === "history" ? "🕒 Watch History" :
+      tab === "trending" ? "🔥 Trending Videos" :
+      tab === "saved" ? "❤️ Saved Videos" :
+      catFilter ? `📂 ${catFilter}` : "🎬 All Videos"
+    }
+    // Fixed: Ensure action only shows for history and when there's actually content
+    action={tab === "history" && videos.length > 0 ? handleClearAll : null}
+    actionLabel={tab === "history" && videos.length > 0 ? "Clear All" : null}
+  />
+</div>
 
       {!loading && displayed.length === 0 ? (
         <EmptyState
