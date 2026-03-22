@@ -7,6 +7,44 @@ import { DEMO_VIDEOS } from "../../data/theme";
 import CommentSection from "./CommentSection";
 import ControlsBar from "./ControlsBar";
 
+
+const AD_STRATEGY = {
+  1: { pre: 5, post: 0, label: "Low Friction Start" },
+  2: { pre: 0, post: 5, label: "Trust Build & Bank" },
+  3: { pre: 10, post: 0, label: "Committed User" },
+  4: { pre: 0, post: 10, label: "Pure Breather" },
+  5: { pre: 15, post: 5, label: "Money Peak" }, // 15s Interstitial
+  6: { pre: 0, post: 10, label: "Recovery Phase" },
+  7: { pre: 6, post: 0, label: "Guaranteed Revenue" },
+  8: { pre: 0, post: 5, label: "Browse-Time Ad" },
+  9: { pre: 10, post: 0, label: "Final Wave Push" },
+  10: { pre: 5, post: 30, label: "Premium Milestone" },
+  11: { pre: 5, post: 0, label: "Premium Milestone2" },
+  12: { pre: 0, post: 30, label: "Premium Milestone3" },
+  13: { pre: 6, post: 0, label: "Quick Tap" },
+  14: { pre: 6, post: 0, label: "Quick Tap" },
+  15: { pre: 6, post: 0, label: "Quick Tap" },
+  16: { pre: 6, post: 0, label: "Quick Tap" },
+  17: { pre: 6, post: 0, label: "Fast CPM Spike" },
+  19: { pre: 5, post: 0, label: "Final Stretch" },
+  20: { pre: 0, post: 30, label: "The Big Check" }
+};
+
+// Change getStrategy to this:
+const getStrategy = (count, videoId = "") => {
+  const strat = AD_STRATEGY[count];
+  if (strat) return { pre: strat.pre || 0, post: strat.post || 0, label: strat.label || "Standard" };
+
+  // For power users (count > 20), use the videoId length to make a stable choice
+  // This replaces Math.random() so it never flip-flops
+  const isBumper = count > 20 && (count % 3 === 0 || videoId.length % 2 === 0);
+
+  return isBumper
+    ? { pre: 6, post: 0, label: "Power Bumper" }
+    : { pre: 0, post: 0, label: "Organic" };
+};
+
+
 function SeekFlash({ seekFlash, arcProg }) {
   if (!seekFlash) return null;
   const C2 = 188.5;
@@ -119,12 +157,116 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   // If DB has 99, player shows 99 immediately on open.
   // ═══════════════════════════════════════════════════════════════
 
+  // --- Insert after your existing states ---
+  const [sessionCount, setSessionCount] = useState(() =>
+    parseInt(sessionStorage.getItem("lx_vcount") || "1")
+  );
+  const [adActive, setAdActive] = useState(false);
+  const [adTime, setAdTime] = useState(0);
+  const [adTotalDuration, setAdTotalDuration] = useState(0); // <--- ADD THIS MISSING LINE
+  const [requiredWait, setRequiredWait] = useState(0);
+  const [canSkip, setCanSkip] = useState(false);
+  const [currentAdPart, setCurrentAdPart] = useState(null);
+
+  const adTimerRef = useRef(null); // <--- Add this
+
+  const cancelAuto = useCallback(() => { clearInterval(autoTimer.current); setAutoCountdown(null); }, []);
+
+  const playNext = useCallback(() => {
+    cancelAuto();
+    const next = related[0];
+    if (next) { setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 }); setProg(0); setCurTime(0); setDur(0); }
+  }, [related, cancelAuto]);
+
+
+
+
+  const startAd = useCallback((duration, type) => {
+    if (duration <= 0) return;
+    if (adTimerRef.current) clearInterval(adTimerRef.current);
+
+    // Set the total duration and the required wait to the same value 
+    // to make the ad fully unskippable for its entire size.
+    setAdTotalDuration(duration);
+    setRequiredWait(duration);
+
+    setAdActive(true);
+    setAdTime(duration);
+    setCanSkip(false);
+    setCurrentAdPart(type);
+    setPlaying(false);
+
+    if (vRef.current) vRef.current.pause();
+
+    adTimerRef.current = setInterval(() => {
+      setAdTime(prev => {
+        const newTime = prev - 1;
+
+        if (newTime <= 0) {
+          clearInterval(adTimerRef.current);
+          adTimerRef.current = null;
+          setCanSkip(true); // Enable skip button only when ad finishes
+          return 0;
+        }
+        return newTime;
+      });
+    }, 1200);
+  }, []);
+
+
+  useEffect(() => {
+    return () => {
+      if (adTimerRef.current) clearInterval(adTimerRef.current);
+    };
+  }, []);
+
+  const skipAd = useCallback(() => {
+    setAdActive(false);
+
+    if (currentAdPart === 'pre') {
+      // Start the current video
+      vRef.current?.play();
+      setPlaying(true);
+    } else if (currentAdPart === 'post') {
+      // Move to next video in the playlist
+      playNext();
+    }
+  }, [currentAdPart, playNext]);
+  // Note: Wrap skipAd in useCallback if you haven't already to avoid effect loops
+
+
   // ═══════════════════════════════════════════════════════════════
   // Reset increment tracker when video changes (related video play)
   // ═══════════════════════════════════════════════════════════════
+
+  // Update this useEffect in your code:
   useEffect(() => {
     viewIncremented.current = false;
-  }, [video.id]);
+
+    // 1. Get the strategy STABLY using video.id
+    const strategy = getStrategy(sessionCount, video.id);
+
+    if (!adActive) {
+      console.log("--- AD DEBUG ---", { session: sessionCount, label: strategy.label });
+
+      if (strategy.pre > 0) {
+        startAd(strategy.pre, 'pre');
+      } else {
+        // ── CRITICAL FIX: If no ad, force-clear everything to prevent "stuck" screens ──
+        setAdActive(false);
+        setAdTime(0);
+        setCanSkip(false);
+        if (adTimerRef.current) {
+          clearInterval(adTimerRef.current);
+          adTimerRef.current = null;
+        }
+      }
+
+      const next = sessionCount + 1;
+      setSessionCount(next);
+      sessionStorage.setItem("lx_vcount", next.toString());
+    }
+  }, [video.id]); // Only run when video changes
 
   // ═══════════════════════════════════════════════════════════════
   // THE ONLY INCREMENT — fires once after 3s of actual playback.
@@ -133,26 +275,43 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   // all VideoCards on the home/profile screen via custom event.
   // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (!playing || viewIncremented.current) return;
+    // ── FIX: If ad is active, do not start the view timer ──
+    if (!playing || viewIncremented.current || adActive) return;
+
     const timer = setTimeout(async () => {
-      try {
-        const newViewCount = await videoAPI.incrementViews(video.id);
-        const updatedVideo = { ...video, views: newViewCount, views_count: newViewCount };
-
-        // Save to memory so the Home Page and Player stay in sync
-        sessionStorage.setItem(`video_${video.id}`, JSON.stringify(updatedVideo));
-
-        setVideo(updatedVideo);
-        window.dispatchEvent(new CustomEvent("video_view_updated", {
-          detail: { videoId: video.id, views: newViewCount },
-        }));
-        viewIncremented.current = true;
-      } catch (err) {
-        console.error("Failed to increment view:", err);
+      // Re-verify conditions inside the timeout to be 100% sure
+      if (!viewIncremented.current && !adActive) {
+        try {
+          const newViewCount = await videoAPI.incrementViews(video.id);
+          const updatedVideo = { ...video, views: newViewCount, views_count: newViewCount };
+          sessionStorage.setItem(`video_${video.id}`, JSON.stringify(updatedVideo));
+          setVideo(updatedVideo);
+          window.dispatchEvent(new CustomEvent("video_view_updated", {
+            detail: { videoId: video.id, views: newViewCount },
+          }));
+          viewIncremented.current = true;
+        } catch (err) {
+          console.error("Failed to increment view:", err);
+        }
       }
     }, 3000);
+
     return () => clearTimeout(timer);
-  }, [playing, video.id]);
+  }, [playing, video.id, adActive]); // adActive must be a dependency
+
+
+  // --- Add this alongside your other useEffects ---
+  useEffect(() => {
+    // Only trigger auto-skip if we are actually at 0 and ad is active
+    if (adActive && canSkip && adTime === 0) {
+      const autoSkipTimer = setTimeout(() => {
+        // Re-verify conditions before jumping
+        if (adActive && canSkip) skipAd();
+      }, 0); // 800ms gives the user a moment to see "Starting..."
+
+      return () => clearTimeout(autoSkipTimer);
+    }
+  }, [adActive, canSkip, adTime, skipAd]);
 
   // ═══════════════════════════════════════════════════════════════
   // Keep player in sync if another tab/VideoCard fires the event
@@ -186,31 +345,92 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }
   }, [video.id, session?.user?.id]);
 
-  // Video element events
+  // ── VIDEO ELEMENT EVENTS & BUFFERING ──────────────────────────────────
   useEffect(() => {
     const v = vRef.current; if (!v) return;
-    setIsBuffering(true); setBuffered(0); setProg(0); setCurTime(0); setDur(0);
-    const tryPlay = () => v.play().then(() => setPlaying(true)).catch(() => { });
-    if (v.readyState >= 2) tryPlay(); else v.addEventListener("canplay", tryPlay, { once: true });
+
+    // Reset standard states
+    setBuffered(0); setProg(0); setCurTime(0); setDur(0);
+
+    // ── FIX: Buffering logic ──
+    // We only show the loading spinner if an ad is NOT active.
+    // If an ad IS active, the ad overlay is the "spinner".
+    if (!adActive) {
+      setIsBuffering(true);
+    } else {
+      setIsBuffering(false);
+      v.pause();
+      v.currentTime = 0;
+    }
+
+    const tryPlay = () => {
+      if (!vRef.current) return;
+      if (adActive) {
+        vRef.current.pause();
+        vRef.current.currentTime = 0;
+      } else {
+        // Force reset to 0 right before playing to fix the "starting at 5s" bug
+        vRef.current.currentTime = 0;
+        vRef.current.play().then(() => setPlaying(true)).catch(() => { });
+      }
+    };
+
+    // Ready state listeners
+    if (v.readyState >= 2) tryPlay();
+    else v.addEventListener("canplay", tryPlay, { once: true });
+
+    // UI Updates
     const upd = () => { setCurTime(v.currentTime); setDur(v.duration || 0); setProg(v.duration ? (v.currentTime / v.duration) * 100 : 0); };
-    const onWaiting = () => setIsBuffering(true);
+
+    // ── FIX: Smart Buffering listeners ──
+    const onWaiting = () => {
+      // Only show the spinner if the video is actually trying to play (No Ad)
+      if (!adActive) setIsBuffering(true);
+    };
     const onPlay2 = () => setIsBuffering(false);
-    const onSeeking = () => setIsBuffering(true);
+    const onSeeking = () => { if (!adActive) setIsBuffering(true); };
     const onSeeked = () => setIsBuffering(false);
     const onProgress = () => { if (v.buffered.length && v.duration) setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100); };
-    const onEnded = () => startAutoCountdown();
-    v.addEventListener("timeupdate", upd); v.addEventListener("loadedmetadata", upd);
-    v.addEventListener("waiting", onWaiting); v.addEventListener("playing", onPlay2);
-    v.addEventListener("seeking", onSeeking); v.addEventListener("seeked", onSeeked);
-    v.addEventListener("progress", onProgress); v.addEventListener("ended", onEnded);
-    return () => {
-      v.removeEventListener("timeupdate", upd); v.removeEventListener("loadedmetadata", upd);
-      v.removeEventListener("waiting", onWaiting); v.removeEventListener("playing", onPlay2);
-      v.removeEventListener("seeking", onSeeking); v.removeEventListener("seeked", onSeeked);
-      v.removeEventListener("progress", onProgress); v.removeEventListener("ended", onEnded);
-      clearTimeout(ctrlTimer.current); clearTimeout(flashTimer.current); clearInterval(autoTimer.current);
+    const handleEnded = () => {
+      // 1. Get the strategy for the video that just finished
+      // We use sessionCount - 1 because the count was already bumped when the video started
+      const strategy = getStrategy(sessionCount - 1, video.id);
+
+      if (strategy.post > 0) {
+        // 2. Trigger the Post-Roll ad (e.g., the 30s "Premium Milestone")
+        // Because of our startAd logic, this will be fully unskippable
+        startAd(strategy.post, 'post');
+      } else {
+        // 3. If no post-ad, show the "Up Next" 5-second countdown
+        startAutoCountdown();
+      }
     };
-  }, [video.id, video.video_url]);
+
+    v.addEventListener("timeupdate", upd);
+    v.addEventListener("loadedmetadata", upd);
+    v.addEventListener("waiting", onWaiting);
+    v.addEventListener("playing", onPlay2);
+    v.addEventListener("seeking", onSeeking);
+    v.addEventListener("seeked", onSeeked);
+    v.addEventListener("progress", onProgress);
+    v.addEventListener("ended", handleEnded);
+
+    return () => {
+      v.removeEventListener("timeupdate", upd);
+      v.removeEventListener("loadedmetadata", upd);
+      v.removeEventListener("waiting", onWaiting);
+      v.removeEventListener("playing", onPlay2);
+      v.removeEventListener("seeking", onSeeking);
+      v.removeEventListener("seeked", onSeeked);
+      v.removeEventListener("progress", onProgress);
+      v.removeEventListener("ended", handleEnded);
+
+      clearTimeout(ctrlTimer.current);
+      clearTimeout(flashTimer.current);
+      clearInterval(autoTimer.current);
+    };
+  }, [video.id, video.video_url, adActive, sessionCount]);
+
 
   useEffect(() => { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; }, []);
   useEffect(() => { if (!session) return; likeAPI.isSaved(session.user.id, video.id).then(setSaved); }, [session, video.id]);
@@ -237,13 +457,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }, 1000);
   }, [related]);
 
-  const cancelAuto = useCallback(() => { clearInterval(autoTimer.current); setAutoCountdown(null); }, []);
 
-  const playNext = useCallback(() => {
-    cancelAuto();
-    const next = related[0];
-    if (next) { setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 }); setProg(0); setCurTime(0); setDur(0); }
-  }, [related, cancelAuto]);
 
   const playRelated = useCallback(v => {
     cancelAuto();
@@ -258,10 +472,12 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   }, []);
 
   const togglePlay = useCallback(() => {
-    const v = vRef.current; if (!v) return;
+    const v = vRef.current;
+    if (!v || adActive) return; // --- ADD adActive HERE ---
+
     if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => { }); revealCtrl(); }
     else { v.pause(); setPlaying(false); setShowCtrl(true); clearTimeout(ctrlTimer.current); }
-  }, [revealCtrl]);
+  }, [revealCtrl, adActive]); // Add adActive to dependencies
 
   const seekBy = useCallback(secs => {
     const v = vRef.current; if (!v) return;
@@ -363,14 +579,19 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   const pf = video.profiles || {};
 
   const handleProfileClick = (e) => {
-    if (e) e.stopPropagation();
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+
     const profileData = video?.profiles || pf;
     const identifier = profileData?.username || profileData?.id;
     if (!identifier) return;
 
     // Close player first, then navigate on next tick
     // so the profile page renders cleanly without the modal on top
-    if (onClose) onClose(); else setPlayer(null);
+    //if (onClose) onClose(); else setPlayer(null);
+    window.dispatchEvent(new CustomEvent('lx_pause_video'));
     window.scrollTo(0, 0);
 
     setTimeout(() => {
@@ -379,8 +600,21 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }, 50);
   };
 
+  useEffect(() => {
+    // This function runs when 'lx_pause_video' is heard
+    const handlePause = () => {
+      if (vRef.current) vRef.current.pause();
+    };
+
+    window.addEventListener('lx_pause_video', handlePause);
+    return () => window.removeEventListener('lx_pause_video', handlePause);
+  }, []);
+
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: C.bg, overflowY: "auto", animation: "fadeIn .15s ease" }}>
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999, background: C.bg, overflowY: "auto",
+      overflowX: "hidden", animation: "fadeIn .15s ease"
+    }}>
       {/* Top bar */}
       <div style={{ position: "sticky", top: 0, zIndex: 100, background: "var(--headerBg)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "10px 12px" : "10px 20px", height: 52 }}>
         <button onClick={onClose} style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: "50%", width: 34, height: 34, color: C.text, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
@@ -401,13 +635,23 @@ export default function PlayerModal({ video: initVideo, onClose }) {
             ref={wrapRef}
             onMouseMove={revealCtrl}
             onMouseLeave={() => { if (playing) { clearTimeout(ctrlTimer.current); ctrlTimer.current = setTimeout(() => setShowCtrl(false), 600); } }}
-            style={{ position: "relative", background: "#000", width: "100%", aspectRatio: isFS ? "unset" : "16/9", userSelect: "none", ...(isFS ? { position: "fixed", inset: 0, zIndex: 99999 } : {}) }}
+            style={{ position: "relative", background: "#000", width: "100%", overflow: "hidden", aspectRatio: isFS ? "unset" : "16/9", userSelect: "none", ...(isFS ? { position: "fixed", inset: 0, zIndex: 99999 } : {}) }}
           >
             <video
               ref={vRef}
               src={video.video_url}
               playsInline
-              onPlay={() => setPlaying(true)}
+              // ── ADD THIS LINE ──
+              onTimeUpdate={() => { if (adActive && vRef.current && vRef.current.currentTime > 0) vRef.current.currentTime = 0; }}
+              onPlay={() => {
+                if (adActive) {
+                  vRef.current.pause();
+                  vRef.current.currentTime = 0;
+                } else {
+                  setPlaying(true);
+                }
+              }}
+              //onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onClick={!isMobile ? togglePlay : undefined}
@@ -419,7 +663,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
             </video>
 
             {/* Buffering spinner */}
-            {isBuffering && (
+            {isBuffering && !adActive && (  // <── Add "!adActive" here
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 15, pointerEvents: "none" }}>
                 <div style={{ position: "relative", width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "3px solid rgba(255,255,255,.1)" }} />
@@ -431,7 +675,22 @@ export default function PlayerModal({ video: initVideo, onClose }) {
 
             {!playing && !isBuffering && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 10 }}>
-                <div style={{ width: 76, height: 76, borderRadius: "50%", background: `${C.accent}cc`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, boxShadow: `0 0 60px ${C.accent}88`, animation: "pulseRing 1.8s infinite" }}>▶</div>
+                <div style={{
+                  // ── UPDATE THESE LINES ──
+                  width: isMobile ? 50 : 76,
+                  height: isMobile ? 50 : 76,
+                  fontSize: isMobile ? 20 : 32,
+                  // ────────────────────────
+                  borderRadius: "50%",
+                  background: `${C.accent}cc`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: `0 0 60px ${C.accent}88`,
+                  animation: "pulseRing 1.8s infinite"
+                }}>
+                  ▶
+                </div>
               </div>
             )}
 
@@ -454,8 +713,95 @@ export default function PlayerModal({ video: initVideo, onClose }) {
             )}
 
             {autoCountdown !== null && <AutoPlayCountdown seconds={autoCountdown} onPlay={playNext} onCancel={cancelAuto} />}
+
+            {/* --- INSERT THIS INSIDE YOUR PLAYER CONTAINER --- */}
+            {adActive && (
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 100, // Ensure it's above the video and controls
+                background: "rgba(0,0,0,0.95)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                backdropFilter: "blur(10px)",
+                animation: "fadeIn 0.3s ease"
+              }}>
+                {/* Animated background pulse */}
+                <div style={{
+                  position: "absolute",
+                  width: "100%",
+                  height: "100%",
+                  background: `radial-gradient(circle, ${C.accent}15 0%, transparent 70%)`,
+                  animation: "pulseRing 2s infinite"
+                }} />
+
+                <div style={{ textAlign: "center", zIndex: 110 }}>
+                  <div style={{
+                    fontSize: isMobile ? 8 : 10,
+                    fontWeight: 800,
+                    color: C.accent,
+                    letterSpacing: 2,
+                    marginBottom: isMobile ? 4 : 10,
+                    textTransform: "uppercase"
+                  }}>
+                    {currentAdPart === 'pre' ? 'Pre-Roll' : 'Post-Roll'} Ad
+                  </div>
+                  <h2 style={{ fontSize: isMobile ? 18 : 24, fontWeight: 900, color: "#fff", marginBottom: 5 }}>
+                    Commercial Break
+                  </h2>
+                  {!isMobile && ( // Hide the description on mobile to save space
+                    <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+                      Content will resume shortly
+                    </p>
+                  )}
+                </div>
+
+                {/* Skip Button Container */}
+                <div style={{
+                  position: "absolute",
+                  bottom: isMobile ? 12 : 24,
+                  right: isMobile ? 0 : 24 // Align to edge on mobile like YouTube
+                }}>
+                  <button
+                    disabled={!canSkip}
+                    onClick={skipAd}
+                    style={{
+                      padding: isMobile ? "8px 16px" : "14px 30px",
+                      fontSize: isMobile ? 11 : 14,
+                      gap: isMobile ? 6 : 12,
+                      background: canSkip ? C.accent : "rgba(255,255,255,0.1)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: isMobile ? "4px 0 0 4px" : "12px",
+                      fontWeight: 800,
+                      cursor: canSkip ? "pointer" : "default",
+                      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                      display: "flex",
+                      alignItems: "center",
+                      boxShadow: canSkip ? `0 0 20px ${C.accent}44` : "none"
+                    }}
+                  >
+                    {canSkip ? (
+                      <>
+                        {adTime === 0 ? "Starting..." : (currentAdPart === 'pre' ? "Start Video" : "Next Video")}
+                        <span style={{ marginLeft: 8 }}>→</span>
+                      </>
+                    ) : (
+                      <>Ends in {Math.ceil(adTime)}s</>
+                    )}
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
             <ControlsBar {...controlProps} />
           </div>
+
+
 
           {/* Info section */}
           <div style={{ padding: isMobile ? "14px 12px" : "18px 20px" }}>
@@ -564,6 +910,7 @@ function ActionBtn({ icon, label, active, color, onClick }) {
     </button>
   );
 }
+
 
 function RelatedList({ videos, onPlay, isMobile }) {
   return (
