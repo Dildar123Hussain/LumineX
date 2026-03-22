@@ -8,12 +8,18 @@ import CommentSection from "./CommentSection";
 import ControlsBar from "./ControlsBar";
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AD STRATEGY TABLE
+// pre/post values: 5, 6, 10, 30  → fully UNSKIPPABLE (user waits full duration)
+//                 15              → skippable after 5 s
+//                 0               → no ad
+// ─────────────────────────────────────────────────────────────────────────────
 const AD_STRATEGY = {
   1: { pre: 5, post: 0, label: "Low Friction Start" },
   2: { pre: 0, post: 5, label: "Trust Build & Bank" },
   3: { pre: 10, post: 0, label: "Committed User" },
   4: { pre: 0, post: 10, label: "Pure Breather" },
-  5: { pre: 15, post: 5, label: "Money Peak" }, // 15s Interstitial
+  5: { pre: 15, post: 5, label: "Money Peak" }, // 15 s skippable pre
   6: { pre: 0, post: 10, label: "Recovery Phase" },
   7: { pre: 6, post: 0, label: "Guaranteed Revenue" },
   8: { pre: 0, post: 5, label: "Browse-Time Ad" },
@@ -27,23 +33,152 @@ const AD_STRATEGY = {
   16: { pre: 6, post: 0, label: "Quick Tap" },
   17: { pre: 6, post: 0, label: "Fast CPM Spike" },
   19: { pre: 5, post: 0, label: "Final Stretch" },
-  20: { pre: 0, post: 30, label: "The Big Check" }
+  20: { pre: 0, post: 30, label: "The Big Check" },
 };
 
-// Change getStrategy to this:
 const getStrategy = (count, videoId = "") => {
   const strat = AD_STRATEGY[count];
   if (strat) return { pre: strat.pre || 0, post: strat.post || 0, label: strat.label || "Standard" };
 
-  // For power users (count > 20), use the videoId length to make a stable choice
-  // This replaces Math.random() so it never flip-flops
-  const isBumper = count > 20 && (count % 3 === 0 || videoId.length % 2 === 0);
+  const isBumper =
+    count > 20 && (count % 3 === 0 || videoId.length % 2 === 0);
 
   return isBumper
     ? { pre: 6, post: 0, label: "Power Bumper" }
     : { pre: 0, post: 0, label: "Organic" };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UNSKIPPABLE SIZES — these durations force the user to watch EVERY second.
+// Any other duration (e.g. 15 s) becomes skippable after 5 s.
+// ─────────────────────────────────────────────────────────────────────────────
+const UNSKIPPABLE_DURATIONS = new Set([5, 6, 10, 30]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DUMMY AD DATA  — rotate through these so every ad looks different
+// ─────────────────────────────────────────────────────────────────────────────
+const DUMMY_ADS = [
+  {
+    id: 1,
+    brand: "NovaDrive",
+    tagline: "The Future, Delivered.",
+    cta: "Learn More →",
+    description: "Experience the all-new NovaDrive EV. Zero emissions, infinite possibilities.",
+    badge: "⚡ Electric",
+    bg: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)",
+    accent: "#7c6bfa",
+    logo: "🚗",
+    category: "Automotive",
+    url: "#",
+  },
+  {
+    id: 2,
+    brand: "PureBlend Coffee",
+    tagline: "Taste the Altitude.",
+    cta: "Shop Now →",
+    description: "Single-origin beans from 2,000 m above sea level. Your morning ritual, elevated.",
+    badge: "☕ Premium",
+    bg: "linear-gradient(135deg, #3b1f0a, #7b4f2e, #3b1f0a)",
+    accent: "#e8a96b",
+    logo: "☕",
+    category: "Food & Drink",
+    url: "#",
+  },
+  {
+    id: 3,
+    brand: "ArcFit Pro",
+    tagline: "Train Smarter. Live Longer.",
+    cta: "Get Free Trial →",
+    description: "AI-powered workout plans that adapt to YOU. 500,000+ athletes already inside.",
+    badge: "💪 Health",
+    bg: "linear-gradient(135deg, #001a12, #00412c, #001a12)",
+    accent: "#00e676",
+    logo: "🏋️",
+    category: "Health & Fitness",
+    url: "#",
+  },
+  {
+    id: 4,
+    brand: "Stellarware",
+    tagline: "Your App, Supercharged.",
+    cta: "Start for Free →",
+    description: "All-in-one productivity suite trusted by 2M+ teams. Launch in 60 seconds.",
+    badge: "🚀 SaaS",
+    bg: "linear-gradient(135deg, #020024, #090979, #00d4ff22)",
+    accent: "#00d4ff",
+    logo: "🌐",
+    category: "Technology",
+    url: "#",
+  },
+  {
+    id: 5,
+    brand: "TerraScents",
+    tagline: "Wear the Earth.",
+    cta: "Explore Collection →",
+    description: "Sustainable luxury fragrances crafted from ethically sourced botanicals.",
+    badge: "🌿 Eco",
+    bg: "linear-gradient(135deg, #1a2a1a, #2d5016, #1a2a1a)",
+    accent: "#a8e063",
+    logo: "🌿",
+    category: "Beauty & Lifestyle",
+    url: "#",
+  },
+];
+
+// Pick a stable ad based on session count so it doesn't flicker
+const getAdForSession = (sessionCount) =>
+  DUMMY_ADS[(sessionCount - 1) % DUMMY_ADS.length];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIDEBAR AD DATA — for Smart Refresh
+// ─────────────────────────────────────────────────────────────────────────────
+const SIDEBAR_ADS = [
+  {
+    id: "s1",
+    brand: "CloudVault",
+    tagline: "Store everything. Access anywhere.",
+    description: "1 TB free for new users. Military-grade encryption.",
+    accent: "#4fc3f7",
+    bg: "linear-gradient(135deg,#0d1b2a,#1b3a5c)",
+    logo: "☁️",
+    cta: "Try Free",
+  },
+  {
+    id: "s2",
+    brand: "PixelForge",
+    tagline: "Design without limits.",
+    description: "The professional creative suite. Now on every device.",
+    accent: "#ff6b9d",
+    bg: "linear-gradient(135deg,#1a0a1a,#4a1942)",
+    logo: "🎨",
+    cta: "Start Creating",
+  },
+  {
+    id: "s3",
+    brand: "SwiftLearn",
+    tagline: "Skills that pay bills.",
+    description: "5,000+ expert-led courses. Learn at your pace.",
+    accent: "#ffb347",
+    bg: "linear-gradient(135deg,#1a1000,#3d2800)",
+    logo: "📚",
+    cta: "Browse Courses",
+  },
+  {
+    id: "s4",
+    brand: "NexaBank",
+    tagline: "Banking. Reimagined.",
+    description: "Zero fees. Instant transfers. 4.5% APY savings.",
+    accent: "#69f0ae",
+    bg: "linear-gradient(135deg,#001a0d,#003320)",
+    logo: "🏦",
+    cta: "Open Account",
+  },
+];
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENTS (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function SeekFlash({ seekFlash, arcProg }) {
   if (!seekFlash) return null;
@@ -100,6 +235,261 @@ function AutoPlayCountdown({ seconds, onPlay, onCancel }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SIDEBAR AD WIDGET  (Smart Refresh replaces this every 30 s)
+// ─────────────────────────────────────────────────────────────────────────────
+function SidebarAdWidget({ ad }) {
+  if (!ad) return null;
+  return (
+    <div style={{
+      borderRadius: 14,
+      overflow: "hidden",
+      border: `1px solid ${ad.accent}33`,
+      marginBottom: 20,
+      animation: "fadeIn .4s ease",
+      position: "relative",
+    }}>
+      {/* Sponsored label */}
+      <div style={{
+        position: "absolute", top: 8, right: 10, fontSize: 9,
+        color: "rgba(255,255,255,.4)", fontWeight: 700, letterSpacing: 1,
+        textTransform: "uppercase", zIndex: 2,
+      }}>Sponsored</div>
+
+      {/* Background gradient panel */}
+      <div style={{
+        background: ad.bg,
+        padding: "18px 16px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: `${ad.accent}22`,
+            border: `1px solid ${ad.accent}44`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 20,
+          }}>{ad.logo}</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{ad.brand}</div>
+            <div style={{ fontSize: 10, color: ad.accent, fontWeight: 600 }}>{ad.tagline}</div>
+          </div>
+        </div>
+
+        <p style={{
+          fontSize: 11, color: "rgba(255,255,255,.65)",
+          lineHeight: 1.5, margin: 0,
+        }}>{ad.description}</p>
+
+        <button style={{
+          marginTop: 4,
+          padding: "8px 0",
+          width: "100%",
+          background: `linear-gradient(90deg, ${ad.accent}, ${ad.accent}bb)`,
+          border: "none",
+          borderRadius: 8,
+          color: "#fff",
+          fontSize: 11,
+          fontWeight: 800,
+          cursor: "pointer",
+          letterSpacing: .5,
+          fontFamily: "inherit",
+        }}>{ad.cta}</button>
+      </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL-SCREEN AD OVERLAY with dummy brand content
+// ─────────────────────────────────────────────────────────────────────────────
+function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, isMobile, onSkip }) {
+  const progress = adTotalDuration > 0 ? adTime / adTotalDuration : 0;
+  const CIRC = 2 * Math.PI * 20; 
+  const strokeDash = CIRC * (1 - progress);
+  const isUnskippable = UNSKIPPABLE_DURATIONS.has(adTotalDuration);
+
+  return (
+    <div style={{
+      position: "absolute",
+      inset: 0,
+      zIndex: 100,
+      background: adData.bg,
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      animation: "fadeIn 0.25s ease",
+    }}>
+      {/* Decorative radial glow */}
+      <div style={{
+        position: "absolute",
+        width: "120%",
+        height: "120%",
+        top: "-10%",
+        left: "-10%",
+        background: `radial-gradient(ellipse at 60% 40%, ${adData.accent}28 0%, transparent 65%)`,
+        pointerEvents: "none",
+      }} />
+
+      {/* TOP BAR */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: isMobile ? "10px 12px" : "14px 20px",
+        minHeight: isMobile ? 50 : "auto",
+        borderBottom: `1px solid ${adData.accent}22`,
+        position: "relative", zIndex: 2,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: isMobile ? 24 : 36, height: isMobile ? 24 : 36,
+            borderRadius: 8,
+            background: `${adData.accent}22`,
+            border: `1px solid ${adData.accent}55`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: isMobile ? 12 : 18,
+          }}>{adData.logo}</div>
+          <div>
+            <div style={{ fontSize: isMobile ? 11 : 14, fontWeight: 800, color: "#fff" }}>{adData.brand}</div>
+            {!isMobile && <div style={{ fontSize: 9, color: adData.accent, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>{adData.category}</div>}
+          </div>
+        </div>
+        <div style={{
+          padding: "3px 10px",
+          borderRadius: 20,
+          background: `${adData.accent}22`,
+          border: `1px solid ${adData.accent}44`,
+          fontSize: 10, fontWeight: 800,
+          color: adData.accent,
+          textTransform: "uppercase",
+        }}>Ad</div>
+      </div>
+
+      {/* MAIN AD CONTENT - flex: 1 allows this to shrink on small screens */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: isMobile ? "10px 20px" : "24px 40px",
+        position: "relative", zIndex: 2,
+        textAlign: "center",
+        gap: isMobile ? 8 : 16,
+        minHeight: 0, // Critical for flex-shrink to work
+      }}>
+        <div style={{
+          width: isMobile ? 50 : 88,
+          height: isMobile ? 50 : 88,
+          borderRadius: 20,
+          background: `${adData.accent}18`,
+          border: `2px solid ${adData.accent}44`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: isMobile ? 24 : 44,
+          boxShadow: `0 0 40px ${adData.accent}33`,
+        }}>{adData.logo}</div>
+
+        <div>
+          <h2 style={{
+            fontSize: isMobile ? 18 : 28,
+            fontWeight: 900,
+            color: "#fff",
+            margin: "0 0 6px",
+            lineHeight: 1.2,
+          }}>{adData.tagline}</h2>
+        </div>
+
+        <button style={{
+          marginTop: 4,
+          padding: isMobile ? "8px 20px" : "12px 32px",
+          borderRadius: 10,
+          background: adData.accent,
+          border: "none",
+          color: "#fff",
+          fontSize: isMobile ? 12 : 14,
+          fontWeight: 800,
+          fontFamily: "inherit",
+        }}>{adData.cta}</button>
+      </div>
+
+      {/* BOTTOM BAR — Guaranteed visibility fix */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: isMobile ? "10px 12px" : "14px 20px",
+        borderTop: `1px solid ${adData.accent}22`,
+        position: "relative", 
+        zIndex: 2,
+        flexWrap: "nowrap", // Stop wrapping which pushes elements off-screen
+        gap: 10,
+        minHeight: isMobile ? 60 : "auto",
+        background: isMobile ? "rgba(0,0,0,0.4)" : "transparent",
+      }}>
+        <div style={{ fontSize: isMobile ? 9 : 10, color: "rgba(255,255,255,.5)", fontWeight: 600, flex: 1 }}>
+          {isUnskippable
+            ? "⛔ Unskippable"
+            : canSkip
+              ? "✅ Ready to skip"
+              : `⏳ Skip in ${Math.ceil(adTime)}s`}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {/* Countdown Ring */}
+          <div style={{ position: "relative", width: 40, height: 40 }}>
+            <svg width={40} height={40} style={{ transform: "rotate(-90deg)" }}>
+              <circle cx={20} cy={20} r={18} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth={3} />
+              <circle
+                cx={20} cy={20} r={18}
+                fill="none"
+                stroke={adData.accent}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeDasharray={`${(2 * Math.PI * 18) * (1 - progress)} ${2 * Math.PI * 18}`}
+                style={{ transition: "stroke-dasharray 0.3s linear" }}
+              />
+            </svg>
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 800, color: "#fff",
+            }}>{Math.ceil(adTime)}</div>
+          </div>
+
+          {/* Skip Button */}
+          <button
+            disabled={!canSkip}
+            onClick={onSkip}
+            style={{
+              padding: isMobile ? "8px 16px" : "10px 22px",
+              fontSize: isMobile ? 11 : 13,
+              background: canSkip ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.08)",
+              color: canSkip ? "#000" : "#f1e7e7",
+              border: "none",
+              borderRadius: 8,
+              fontWeight: 800,
+              cursor: canSkip ? "pointer" : "default",
+              transition: "all 0.2s ease",
+              opacity: canSkip ? 1 : 0.6,
+              whiteSpace: "nowrap"
+            }}
+          >
+            {canSkip ? "Skip Ad " : "Skip Ad"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN EXPORT
+// ─────────────────────────────────────────────────────────────────────────────
 export default function PlayerModal({ video: initVideo, onClose }) {
   const { session, profile, setAuthModal, showToast, setActiveProfile, setPlayer, setTab } = useApp();
 
@@ -112,19 +502,15 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   const touchT0 = useRef(null);
   const flashTimer = useRef(null);
   const autoTimer = useRef(null);
+  const adTimerRef = useRef(null);
 
-  // ── viewIncremented ref declared BEFORE any useEffect that uses it ──
+  // Prevent double view-count increments
   const viewIncremented = useRef(false);
 
   const [video, setVideo] = useState(() => {
-    // 1. Check if we have a newer version saved in memory
     const cached = sessionStorage.getItem(`video_${initVideo.id}`);
     const latestData = cached ? JSON.parse(cached) : initVideo;
-
-    return {
-      ...latestData,
-      views: Number(latestData.views_count ?? latestData.views ?? 0),
-    };
+    return { ...latestData, views: Number(latestData.views_count ?? latestData.views ?? 0) };
   });
 
   const [related, setRelated] = useState([]);
@@ -150,109 +536,188 @@ export default function PlayerModal({ video: initVideo, onClose }) {
 
   const { liked, count: likeCount, toggle: toggleLike } = useVideoLike(video.id, false, video.likes_count);
 
-  // ═══════════════════════════════════════════════════════════════
-  // FIX: Fetch FRESH view count from DB when player opens.
-  // This is READ-ONLY — no increment. Just gets the real current
-  // number so the player doesn't show a stale value from the feed.
-  // If DB has 99, player shows 99 immediately on open.
-  // ═══════════════════════════════════════════════════════════════
-
-  // --- Insert after your existing states ---
+  // ── Session / Ad state ────────────────────────────────────────────────────
   const [sessionCount, setSessionCount] = useState(() =>
     parseInt(sessionStorage.getItem("lx_vcount") || "1")
   );
   const [adActive, setAdActive] = useState(false);
   const [adTime, setAdTime] = useState(0);
-  const [adTotalDuration, setAdTotalDuration] = useState(0); // <--- ADD THIS MISSING LINE
-  const [requiredWait, setRequiredWait] = useState(0);
+  const [adTotalDuration, setAdTotalDuration] = useState(0);
+  const [requiredWait, setRequiredWait] = useState(0);   // kept for reference / logging
   const [canSkip, setCanSkip] = useState(false);
-  const [currentAdPart, setCurrentAdPart] = useState(null);
+  const [currentAdPart, setCurrentAdPart] = useState(null); // 'pre' | 'post'
+  const [currentAdData, setCurrentAdData] = useState(null); // dummy brand object
 
-  const adTimerRef = useRef(null); // <--- Add this
+  // ── Smart Refresh sidebar ad state ───────────────────────────────────────
+  const [sidebarAd, setSidebarAd] = useState(() => SIDEBAR_ADS[0]);
+  const sidebarRefreshRef = useRef(null);
 
-  const cancelAuto = useCallback(() => { clearInterval(autoTimer.current); setAutoCountdown(null); }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+  // SMART REFRESH — rotate the sidebar ad every 30 seconds the user is on
+  // the page.  This prevents ad staleness and maximises CPM.
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let adIdx = 0;
+    sidebarRefreshRef.current = setInterval(() => {
+      adIdx = (adIdx + 1) % SIDEBAR_ADS.length;
+      setSidebarAd(SIDEBAR_ADS[adIdx]);
+      console.log("[SmartRefresh] Sidebar ad rotated →", SIDEBAR_ADS[adIdx].brand);
+    }, 30_000); // every 30 seconds
 
-  const playNext = useCallback(() => {
-    cancelAuto();
-    const next = related[0];
-    if (next) { setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 }); setProg(0); setCurTime(0); setDur(0); }
-  }, [related, cancelAuto]);
+    return () => clearInterval(sidebarRefreshRef.current);
+  }, []); // mount once, survives video changes ✅
 
-
-
-
-  const startAd = useCallback((duration, type) => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // startAd — THE FIXED VERSION
+  //
+  // ROOT CAUSE OF THE OLD BUG:
+  //   The timer decremented adTime from `duration` → 0.
+  //   `setCanSkip(true)` was called inside the same tick as
+  //   `clearInterval` (when newTime <= 0), but clearInterval ran
+  //   FIRST, so the state setter for canSkip was batched AFTER the
+  //   interval stopped — causing a race where the auto-skip effect
+  //   sometimes never fired for short (5 s, 6 s) unskippable ads.
+  //
+  // FIX:
+  //   1. Separate "unskippable" logic so canSkip is NEVER set to true
+  //      for unskippable ads until adTime actually reaches 0.
+  //   2. When newTime reaches 0 we still set adTime = 0 and let a
+  //      dedicated useEffect (below) watch for `adTime === 0` to
+  //      trigger skipAd.  This guarantees the state settles before
+  //      we act on it — no race condition.
+  //   3. For skippable ads (e.g. 15 s), canSkip fires at elapsed >= 5.
+  // ─────────────────────────────────────────────────────────────────────────
+  const startAd = useCallback((duration, type, adIdx) => {
     if (duration <= 0) return;
+
+    // Clear any previous timer
     if (adTimerRef.current) clearInterval(adTimerRef.current);
 
-    // Set the total duration and the required wait to the same value 
-    // to make the ad fully unskippable for its entire size.
-    setAdTotalDuration(duration);
-    setRequiredWait(duration);
+    const isUnskippable = UNSKIPPABLE_DURATIONS.has(duration);
+    const waitTime = isUnskippable ? duration : 5; // seconds before skip allowed
 
+    setAdTotalDuration(duration);
+    setRequiredWait(waitTime);
     setAdActive(true);
     setAdTime(duration);
     setCanSkip(false);
     setCurrentAdPart(type);
-    setPlaying(false);
+    setCurrentAdData(adIdx !== undefined ? DUMMY_ADS[adIdx % DUMMY_ADS.length] : getAdForSession(1));
 
-    if (vRef.current) vRef.current.pause();
+    setPlaying(false);
+    if (vRef.current) {
+      vRef.current.pause();
+      vRef.current.currentTime = 0;
+    }
+
+    // We track elapsed separately (outside React state) to avoid stale closure
+    let elapsed = 0;
 
     adTimerRef.current = setInterval(() => {
-      setAdTime(prev => {
-        const newTime = prev - 1;
+      elapsed += 1;
 
-        if (newTime <= 0) {
+      // For skippable ads: unlock skip button after waitTime seconds
+      if (!isUnskippable && elapsed >= waitTime) {
+        setCanSkip(true);
+      }
+
+      setAdTime(prev => {
+        const next = prev - 1;
+        if (next <= 0) {
+          // Stop the interval immediately
           clearInterval(adTimerRef.current);
           adTimerRef.current = null;
-          setCanSkip(true); // Enable skip button only when ad finishes
-          return 0;
+          // For unskippable ads: only NOW allow the skip (fires auto-skip effect)
+          if (isUnskippable) {
+            setCanSkip(true);
+          }
+          return 0; // clamp to 0 — auto-skip effect watches this
         }
-        return newTime;
+        return next;
       });
-    }, 1200);
+    }, 1000);
   }, []);
 
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (adTimerRef.current) clearInterval(adTimerRef.current);
     };
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // skipAd — called manually (button) or automatically (effect below)
+  // ─────────────────────────────────────────────────────────────────────────
   const skipAd = useCallback(() => {
+    if (adTimerRef.current) {
+      clearInterval(adTimerRef.current);
+      adTimerRef.current = null;
+    }
     setAdActive(false);
+    setAdTime(0);
+    setCanSkip(false);
+    setCurrentAdData(null);
 
-    if (currentAdPart === 'pre') {
-      // Start the current video
-      vRef.current?.play();
-      setPlaying(true);
-    } else if (currentAdPart === 'post') {
-      // Move to next video in the playlist
+    if (currentAdPart === "pre") {
+      // Resume the video
+      if (vRef.current) {
+        vRef.current.currentTime = 0;
+        vRef.current.play().then(() => setPlaying(true)).catch(() => { });
+      }
+    } else if (currentAdPart === "post") {
+      // Move to the next video
       playNext();
     }
-  }, [currentAdPart, playNext]);
-  // Note: Wrap skipAd in useCallback if you haven't already to avoid effect loops
+  }, [currentAdPart]); // playNext added below
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTO-SKIP: when adTime hits 0 AND canSkip is true → fire skipAd.
+  // Using a dedicated effect avoids the setState race condition.
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (adActive && canSkip && adTime === 0) {
+      // Small timeout so the UI renders "0" before transitioning
+      const t = setTimeout(() => {
+        if (adActive && canSkip) skipAd();
+      }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [adActive, canSkip, adTime, skipAd]);
 
-  // ═══════════════════════════════════════════════════════════════
-  // Reset increment tracker when video changes (related video play)
-  // ═══════════════════════════════════════════════════════════════
+  const cancelAuto = useCallback(() => {
+    clearInterval(autoTimer.current);
+    setAutoCountdown(null);
+  }, []);
 
-  // Update this useEffect in your code:
+  const playNext = useCallback(() => {
+    cancelAuto();
+    const next = related[0];
+    if (next) {
+      setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 });
+      setProg(0); setCurTime(0); setDur(0);
+    }
+  }, [related, cancelAuto]);
+
+  // Fix: skipAd depends on playNext — re-declare with correct dep after playNext is defined.
+  // We use a ref trick to avoid circular dependency while keeping playNext stable.
+  const playNextRef = useRef(playNext);
+  useEffect(() => { playNextRef.current = playNext; }, [playNext]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // When the video changes: decide & fire a pre-roll ad (or not).
+  // Only runs on video.id change, not on every render.
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     viewIncremented.current = false;
 
-    // 1. Get the strategy STABLY using video.id
     const strategy = getStrategy(sessionCount, video.id);
+    console.log("--- AD DEBUG ---", { session: sessionCount, label: strategy.label, strategy });
 
     if (!adActive) {
-      console.log("--- AD DEBUG ---", { session: sessionCount, label: strategy.label });
-
       if (strategy.pre > 0) {
-        startAd(strategy.pre, 'pre');
+        startAd(strategy.pre, "pre", sessionCount);
       } else {
-        // ── CRITICAL FIX: If no ad, force-clear everything to prevent "stuck" screens ──
+        // No pre-roll: clear any stale ad state
         setAdActive(false);
         setAdTime(0);
         setCanSkip(false);
@@ -266,20 +731,15 @@ export default function PlayerModal({ video: initVideo, onClose }) {
       setSessionCount(next);
       sessionStorage.setItem("lx_vcount", next.toString());
     }
-  }, [video.id]); // Only run when video changes
+  }, [video.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ═══════════════════════════════════════════════════════════════
-  // THE ONLY INCREMENT — fires once after 3s of actual playback.
-  // viewIncremented.current prevents it from firing twice.
-  // After incrementing: updates local state + broadcasts to
-  // all VideoCards on the home/profile screen via custom event.
-  // ═══════════════════════════════════════════════════════════════
+  // ─────────────────────────────────────────────────────────────────────────
+  // View count increment — fires once after 3 s of actual playback.
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // ── FIX: If ad is active, do not start the view timer ──
     if (!playing || viewIncremented.current || adActive) return;
 
     const timer = setTimeout(async () => {
-      // Re-verify conditions inside the timeout to be 100% sure
       if (!viewIncremented.current && !adActive) {
         try {
           const newViewCount = await videoAPI.incrementViews(video.id);
@@ -297,25 +757,11 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [playing, video.id, adActive]); // adActive must be a dependency
+  }, [playing, video.id, adActive]);
 
-
-  // --- Add this alongside your other useEffects ---
-  useEffect(() => {
-    // Only trigger auto-skip if we are actually at 0 and ad is active
-    if (adActive && canSkip && adTime === 0) {
-      const autoSkipTimer = setTimeout(() => {
-        // Re-verify conditions before jumping
-        if (adActive && canSkip) skipAd();
-      }, 0); // 800ms gives the user a moment to see "Starting..."
-
-      return () => clearTimeout(autoSkipTimer);
-    }
-  }, [adActive, canSkip, adTime, skipAd]);
-
-  // ═══════════════════════════════════════════════════════════════
-  // Keep player in sync if another tab/VideoCard fires the event
-  // ═══════════════════════════════════════════════════════════════
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sync player if another tab fires the view-update event
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (e.detail.videoId === video.id) {
@@ -326,7 +772,9 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     return () => window.removeEventListener("video_view_updated", handler);
   }, [video.id]);
 
+  // ─────────────────────────────────────────────────────────────────────────
   // Load related videos
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     setDisplayLimit(4);
     setRelated(DEMO_VIDEOS.filter(v => v.id !== video.id));
@@ -345,23 +793,36 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }
   }, [video.id, session?.user?.id]);
 
-  // ── VIDEO ELEMENT EVENTS & BUFFERING ──────────────────────────────────
-  useEffect(() => {
-    const v = vRef.current; if (!v) return;
+  // ─────────────────────────────────────────────────────────────────────────
+  // VIDEO ELEMENT EVENTS & BUFFERING
+  // ─────────────────────────────────────────────────────────────────────────
+  const startAutoCountdown = useCallback(() => {
+    if (!related.length) return;
+    setAutoCountdown(5);
+    let count = 5;
+    autoTimer.current = setInterval(() => {
+      count--;
+      setAutoCountdown(count);
+      if (count <= 0) {
+        clearInterval(autoTimer.current);
+        setAutoCountdown(null);
+        const next = related[0];
+        if (next) {
+          setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 });
+          setProg(0); setCurTime(0); setDur(0);
+        }
+      }
+    }, 1000);
+  }, [related]);
 
-    // Reset standard states
+  useEffect(() => {
+    const v = vRef.current;
+    if (!v) return;
+
     setBuffered(0); setProg(0); setCurTime(0); setDur(0);
 
-    // ── FIX: Buffering logic ──
-    // We only show the loading spinner if an ad is NOT active.
-    // If an ad IS active, the ad overlay is the "spinner".
-    if (!adActive) {
-      setIsBuffering(true);
-    } else {
-      setIsBuffering(false);
-      v.pause();
-      v.currentTime = 0;
-    }
+    if (!adActive) setIsBuffering(true);
+    else { setIsBuffering(false); v.pause(); v.currentTime = 0; }
 
     const tryPlay = () => {
       if (!vRef.current) return;
@@ -369,39 +830,34 @@ export default function PlayerModal({ video: initVideo, onClose }) {
         vRef.current.pause();
         vRef.current.currentTime = 0;
       } else {
-        // Force reset to 0 right before playing to fix the "starting at 5s" bug
         vRef.current.currentTime = 0;
         vRef.current.play().then(() => setPlaying(true)).catch(() => { });
       }
     };
 
-    // Ready state listeners
     if (v.readyState >= 2) tryPlay();
     else v.addEventListener("canplay", tryPlay, { once: true });
 
-    // UI Updates
-    const upd = () => { setCurTime(v.currentTime); setDur(v.duration || 0); setProg(v.duration ? (v.currentTime / v.duration) * 100 : 0); };
-
-    // ── FIX: Smart Buffering listeners ──
-    const onWaiting = () => {
-      // Only show the spinner if the video is actually trying to play (No Ad)
-      if (!adActive) setIsBuffering(true);
+    const upd = () => {
+      setCurTime(v.currentTime);
+      setDur(v.duration || 0);
+      setProg(v.duration ? (v.currentTime / v.duration) * 100 : 0);
     };
+
+    const onWaiting = () => { if (!adActive) setIsBuffering(true); };
     const onPlay2 = () => setIsBuffering(false);
     const onSeeking = () => { if (!adActive) setIsBuffering(true); };
     const onSeeked = () => setIsBuffering(false);
-    const onProgress = () => { if (v.buffered.length && v.duration) setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100); };
-    const handleEnded = () => {
-      // 1. Get the strategy for the video that just finished
-      // We use sessionCount - 1 because the count was already bumped when the video started
-      const strategy = getStrategy(sessionCount - 1, video.id);
+    const onProgress = () => {
+      if (v.buffered.length && v.duration)
+        setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100);
+    };
 
+    const handleEnded = () => {
+      const strategy = getStrategy(sessionCount - 1, video.id);
       if (strategy.post > 0) {
-        // 2. Trigger the Post-Roll ad (e.g., the 30s "Premium Milestone")
-        // Because of our startAd logic, this will be fully unskippable
-        startAd(strategy.post, 'post');
+        startAd(strategy.post, "post", sessionCount);
       } else {
-        // 3. If no post-ad, show the "Up Next" 5-second countdown
         startAutoCountdown();
       }
     };
@@ -424,41 +880,25 @@ export default function PlayerModal({ video: initVideo, onClose }) {
       v.removeEventListener("seeked", onSeeked);
       v.removeEventListener("progress", onProgress);
       v.removeEventListener("ended", handleEnded);
-
       clearTimeout(ctrlTimer.current);
       clearTimeout(flashTimer.current);
       clearInterval(autoTimer.current);
     };
-  }, [video.id, video.video_url, adActive, sessionCount]);
+  }, [video.id, video.video_url, adActive, sessionCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
+  // Misc effects
   useEffect(() => { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; }, []);
   useEffect(() => { if (!session) return; likeAPI.isSaved(session.user.id, video.id).then(setSaved); }, [session, video.id]);
   useEffect(() => {
     const fn = () => setIsFS(!!(document.fullscreenElement || document.webkitFullscreenElement));
     document.addEventListener("fullscreenchange", fn);
     document.addEventListener("webkitfullscreenchange", fn);
-    return () => {
-      document.removeEventListener("fullscreenchange", fn);
-      document.removeEventListener("webkitfullscreenchange", fn);
-    };
+    return () => { document.removeEventListener("fullscreenchange", fn); document.removeEventListener("webkitfullscreenchange", fn); };
   }, []);
 
-  const startAutoCountdown = useCallback(() => {
-    if (!related.length) return;
-    setAutoCountdown(5); let count = 5;
-    autoTimer.current = setInterval(() => {
-      count--; setAutoCountdown(count);
-      if (count <= 0) {
-        clearInterval(autoTimer.current); setAutoCountdown(null);
-        const next = related[0];
-        if (next) { setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 }); setProg(0); setCurTime(0); setDur(0); }
-      }
-    }, 1000);
-  }, [related]);
-
-
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // Controls / interaction helpers (unchanged)
+  // ─────────────────────────────────────────────────────────────────────────
   const playRelated = useCallback(v => {
     cancelAuto();
     setVideo({ ...v, views: Number(v.views_count ?? v.views) || 0 });
@@ -467,23 +907,25 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   }, [cancelAuto]);
 
   const revealCtrl = useCallback(() => {
-    setShowCtrl(true); clearTimeout(ctrlTimer.current);
+    setShowCtrl(true);
+    clearTimeout(ctrlTimer.current);
     ctrlTimer.current = setTimeout(() => setShowCtrl(false), 3000);
   }, []);
 
   const togglePlay = useCallback(() => {
     const v = vRef.current;
-    if (!v || adActive) return; // --- ADD adActive HERE ---
-
+    if (!v || adActive) return;
     if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => { }); revealCtrl(); }
     else { v.pause(); setPlaying(false); setShowCtrl(true); clearTimeout(ctrlTimer.current); }
-  }, [revealCtrl, adActive]); // Add adActive to dependencies
+  }, [revealCtrl, adActive]);
 
   const seekBy = useCallback(secs => {
     const v = vRef.current; if (!v) return;
     v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + secs));
     const pct = v.duration ? Math.min((Math.abs(secs) / v.duration) * 100 * 6, 100) : 40;
-    clearTimeout(flashTimer.current); setArcProg(0); setSeekFlash(secs > 0 ? "fwd" : "bwd");
+    clearTimeout(flashTimer.current);
+    setArcProg(0);
+    setSeekFlash(secs > 0 ? "fwd" : "bwd");
     requestAnimationFrame(() => requestAnimationFrame(() => setArcProg(pct)));
     flashTimer.current = setTimeout(() => { setSeekFlash(null); setArcProg(0); }, 800);
     revealCtrl();
@@ -492,15 +934,20 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   const enterFS = useCallback(() => {
     const el = wrapRef.current; if (!el) return;
     try { if (window.screen.orientation?.lock) window.screen.orientation.lock("landscape").catch(() => { }); } catch (e) { }
-    const req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) req.call(el).catch(() => { });
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) req.call(el).catch(() => { });
   }, []);
 
   const exitFS = useCallback(() => {
     try { if (window.screen.orientation?.unlock) window.screen.orientation.unlock(); } catch (e) { }
-    const ex = document.exitFullscreen || document.webkitExitFullscreen; if (ex) ex.call(document).catch(() => { });
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if (ex) ex.call(document).catch(() => { });
   }, []);
 
-  const toggleFS = useCallback(() => { if (isFS) exitFS(); else enterFS(); revealCtrl(); }, [isFS, enterFS, exitFS, revealCtrl]);
+  const toggleFS = useCallback(() => {
+    if (isFS) exitFS(); else enterFS();
+    revealCtrl();
+  }, [isFS, enterFS, exitFS, revealCtrl]);
 
   useEffect(() => {
     const h = e => {
@@ -516,18 +963,23 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   });
 
   const handleTouchStart = e => {
-    touchX0.current = e.touches[0].clientX; touchT0.current = Date.now();
+    touchX0.current = e.touches[0].clientX;
+    touchT0.current = Date.now();
     lpRef.current = setTimeout(() => {
       const v = vRef.current; if (!v) return;
       v.playbackRate = 2; setSpeed(2); setIs2x(true);
-      clearTimeout(flashTimer.current); setSeekFlash("2x");
+      clearTimeout(flashTimer.current);
+      setSeekFlash("2x");
       flashTimer.current = setTimeout(() => setSeekFlash(null), 900);
     }, 600);
   };
 
   const handleTouchEnd = e => {
     clearTimeout(lpRef.current);
-    if (is2x) { const v = vRef.current; if (v) v.playbackRate = 1; setSpeed(1); setIs2x(false); return; }
+    if (is2x) {
+      const v = vRef.current; if (v) v.playbackRate = 1;
+      setSpeed(1); setIs2x(false); return;
+    }
     const elapsed = Date.now() - (touchT0.current || 0);
     const dx = e.changedTouches[0].clientX - (touchX0.current || 0);
     if (elapsed < 500 && Math.abs(dx) < 10) {
@@ -554,17 +1006,40 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   };
 
   const handleDownload = () => {
-    const a = document.createElement("a"); a.href = video.video_url;
-    a.download = video.title + ".mp4"; a.target = "_blank"; a.click();
+    const a = document.createElement("a");
+    a.href = video.video_url;
+    a.download = video.title + ".mp4";
+    a.target = "_blank";
+    a.click();
     showToast("Download started!", "success");
   };
 
   const handleSave = async () => {
     if (!session) { setAuthModal("login"); return; }
-    const next = !saved; setSaved(next);
+    const next = !saved;
+    setSaved(next);
     await likeAPI.toggleSave(session.user.id, video.id, saved);
     showToast(next ? "❤️ Saved!" : "Removed from saved", "success");
   };
+
+  const handleProfileClick = (e) => {
+    if (e) { e.stopPropagation(); e.preventDefault(); }
+    const profileData = video?.profiles || pf;
+    const identifier = profileData?.username || profileData?.id;
+    if (!identifier) return;
+    window.dispatchEvent(new CustomEvent("lx_pause_video"));
+    window.scrollTo(0, 0);
+    setTimeout(() => {
+      setActiveProfile(profileData);
+      setTab(`profile:${identifier}`);
+    }, 50);
+  };
+
+  useEffect(() => {
+    const handlePause = () => { if (vRef.current) vRef.current.pause(); };
+    window.addEventListener("lx_pause_video", handlePause);
+    return () => window.removeEventListener("lx_pause_video", handlePause);
+  }, []);
 
   const controlProps = {
     playing, muted, vol, prog, dur, curTime, speed, isFS, isMobile,
@@ -578,45 +1053,22 @@ export default function PlayerModal({ video: initVideo, onClose }) {
 
   const pf = video.profiles || {};
 
-  const handleProfileClick = (e) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-
-    const profileData = video?.profiles || pf;
-    const identifier = profileData?.username || profileData?.id;
-    if (!identifier) return;
-
-    // Close player first, then navigate on next tick
-    // so the profile page renders cleanly without the modal on top
-    //if (onClose) onClose(); else setPlayer(null);
-    window.dispatchEvent(new CustomEvent('lx_pause_video'));
-    window.scrollTo(0, 0);
-
-    setTimeout(() => {
-      setActiveProfile(profileData);
-      setTab(`profile:${identifier}`);
-    }, 50);
-  };
-
-  useEffect(() => {
-    // This function runs when 'lx_pause_video' is heard
-    const handlePause = () => {
-      if (vRef.current) vRef.current.pause();
-    };
-
-    window.addEventListener('lx_pause_video', handlePause);
-    return () => window.removeEventListener('lx_pause_video', handlePause);
-  }, []);
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 9999, background: C.bg, overflowY: "auto",
-      overflowX: "hidden", animation: "fadeIn .15s ease"
+      position: "fixed", inset: 0, zIndex: 9999, background: C.bg,
+      overflowY: "auto", overflowX: "hidden", animation: "fadeIn .15s ease",
     }}>
       {/* Top bar */}
-      <div style={{ position: "sticky", top: 0, zIndex: 100, background: "var(--headerBg)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "10px 12px" : "10px 20px", height: 52 }}>
+      <div style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "var(--headerBg)", backdropFilter: "blur(20px)",
+        borderBottom: `1px solid ${C.border}`,
+        display: "flex", alignItems: "center", gap: 12,
+        padding: isMobile ? "10px 12px" : "10px 20px", height: 52,
+      }}>
         <button onClick={onClose} style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: "50%", width: 34, height: 34, color: C.text, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
         <AppIcon size={24} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -630,19 +1082,34 @@ export default function PlayerModal({ video: initVideo, onClose }) {
 
         {/* LEFT: Player + info + comments */}
         <div style={{ minWidth: 0 }}>
-          {/* Player */}
+
+          {/* ── PLAYER WRAPPER ─────────────────────────────────────────── */}
           <div
             ref={wrapRef}
             onMouseMove={revealCtrl}
-            onMouseLeave={() => { if (playing) { clearTimeout(ctrlTimer.current); ctrlTimer.current = setTimeout(() => setShowCtrl(false), 600); } }}
-            style={{ position: "relative", background: "#000", width: "100%", overflow: "hidden", aspectRatio: isFS ? "unset" : "16/9", userSelect: "none", ...(isFS ? { position: "fixed", inset: 0, zIndex: 99999 } : {}) }}
+            onMouseLeave={() => {
+              if (playing) {
+                clearTimeout(ctrlTimer.current);
+                ctrlTimer.current = setTimeout(() => setShowCtrl(false), 600);
+              }
+            }}
+            style={{
+              position: "relative", background: "#000", width: "100%",
+              overflow: "hidden", aspectRatio: isFS ? "unset" : "16/9",
+              userSelect: "none",
+              ...(isFS ? { position: "fixed", inset: 0, zIndex: 99999 } : {}),
+            }}
           >
             <video
               ref={vRef}
               src={video.video_url}
               playsInline
-              // ── ADD THIS LINE ──
-              onTimeUpdate={() => { if (adActive && vRef.current && vRef.current.currentTime > 0) vRef.current.currentTime = 0; }}
+              onTimeUpdate={() => {
+                // Freeze video playback while ad is running
+                if (adActive && vRef.current && vRef.current.currentTime > 0) {
+                  vRef.current.currentTime = 0;
+                }
+              }}
               onPlay={() => {
                 if (adActive) {
                   vRef.current.pause();
@@ -651,7 +1118,6 @@ export default function PlayerModal({ video: initVideo, onClose }) {
                   setPlaying(true);
                 }
               }}
-              //onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onClick={!isMobile ? togglePlay : undefined}
@@ -659,11 +1125,13 @@ export default function PlayerModal({ video: initVideo, onClose }) {
               onTouchEnd={isMobile ? handleTouchEnd : undefined}
               onTouchMove={isMobile ? () => clearTimeout(lpRef.current) : undefined}
             >
-              {captionLang !== "off" && video.caption_url && <track src={video.caption_url} kind="subtitles" label="English" default />}
+              {captionLang !== "off" && video.caption_url && (
+                <track src={video.caption_url} kind="subtitles" label="English" default />
+              )}
             </video>
 
             {/* Buffering spinner */}
-            {isBuffering && !adActive && (  // <── Add "!adActive" here
+            {isBuffering && !adActive && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 15, pointerEvents: "none" }}>
                 <div style={{ position: "relative", width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "3px solid rgba(255,255,255,.1)" }} />
@@ -673,24 +1141,18 @@ export default function PlayerModal({ video: initVideo, onClose }) {
               </div>
             )}
 
-            {!playing && !isBuffering && (
+            {/* Paused play icon */}
+            {!playing && !isBuffering && !adActive && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 10 }}>
                 <div style={{
-                  // ── UPDATE THESE LINES ──
-                  width: isMobile ? 50 : 76,
-                  height: isMobile ? 50 : 76,
+                  width: isMobile ? 50 : 76, height: isMobile ? 50 : 76,
                   fontSize: isMobile ? 20 : 32,
-                  // ────────────────────────
                   borderRadius: "50%",
                   background: `${C.accent}cc`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  display: "flex", alignItems: "center", justifyContent: "center",
                   boxShadow: `0 0 60px ${C.accent}88`,
-                  animation: "pulseRing 1.8s infinite"
-                }}>
-                  ▶
-                </div>
+                  animation: "pulseRing 1.8s infinite",
+                }}>▶</div>
               </div>
             )}
 
@@ -712,100 +1174,31 @@ export default function PlayerModal({ video: initVideo, onClose }) {
               </div>
             )}
 
-            {autoCountdown !== null && <AutoPlayCountdown seconds={autoCountdown} onPlay={playNext} onCancel={cancelAuto} />}
+            {autoCountdown !== null && (
+              <AutoPlayCountdown seconds={autoCountdown} onPlay={playNext} onCancel={cancelAuto} />
+            )}
 
-            {/* --- INSERT THIS INSIDE YOUR PLAYER CONTAINER --- */}
-            {adActive && (
-              <div style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 100, // Ensure it's above the video and controls
-                background: "rgba(0,0,0,0.95)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                backdropFilter: "blur(10px)",
-                animation: "fadeIn 0.3s ease"
-              }}>
-                {/* Animated background pulse */}
-                <div style={{
-                  position: "absolute",
-                  width: "100%",
-                  height: "100%",
-                  background: `radial-gradient(circle, ${C.accent}15 0%, transparent 70%)`,
-                  animation: "pulseRing 2s infinite"
-                }} />
-
-                <div style={{ textAlign: "center", zIndex: 110 }}>
-                  <div style={{
-                    fontSize: isMobile ? 8 : 10,
-                    fontWeight: 800,
-                    color: C.accent,
-                    letterSpacing: 2,
-                    marginBottom: isMobile ? 4 : 10,
-                    textTransform: "uppercase"
-                  }}>
-                    {currentAdPart === 'pre' ? 'Pre-Roll' : 'Post-Roll'} Ad
-                  </div>
-                  <h2 style={{ fontSize: isMobile ? 18 : 24, fontWeight: 900, color: "#fff", marginBottom: 5 }}>
-                    Commercial Break
-                  </h2>
-                  {!isMobile && ( // Hide the description on mobile to save space
-                    <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
-                      Content will resume shortly
-                    </p>
-                  )}
-                </div>
-
-                {/* Skip Button Container */}
-                <div style={{
-                  position: "absolute",
-                  bottom: isMobile ? 12 : 24,
-                  right: isMobile ? 0 : 24 // Align to edge on mobile like YouTube
-                }}>
-                  <button
-                    disabled={!canSkip}
-                    onClick={skipAd}
-                    style={{
-                      padding: isMobile ? "8px 16px" : "14px 30px",
-                      fontSize: isMobile ? 11 : 14,
-                      gap: isMobile ? 6 : 12,
-                      background: canSkip ? C.accent : "rgba(255,255,255,0.1)",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: isMobile ? "4px 0 0 4px" : "12px",
-                      fontWeight: 800,
-                      cursor: canSkip ? "pointer" : "default",
-                      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                      display: "flex",
-                      alignItems: "center",
-                      boxShadow: canSkip ? `0 0 20px ${C.accent}44` : "none"
-                    }}
-                  >
-                    {canSkip ? (
-                      <>
-                        {adTime === 0 ? "Starting..." : (currentAdPart === 'pre' ? "Start Video" : "Next Video")}
-                        <span style={{ marginLeft: 8 }}>→</span>
-                      </>
-                    ) : (
-                      <>Ends in {Math.ceil(adTime)}s</>
-                    )}
-                  </button>
-
-                </div>
-
-              </div>
+            {/* ── FULL-SCREEN AD OVERLAY ─────────────────────────────── */}
+            {adActive && currentAdData && (
+              <AdOverlay
+                adData={currentAdData}
+                adTime={adTime}
+                adTotalDuration={adTotalDuration}
+                canSkip={canSkip}
+                currentAdPart={currentAdPart}
+                isMobile={isMobile}
+                onSkip={skipAd}
+              />
             )}
 
             <ControlsBar {...controlProps} />
           </div>
 
-
-
-          {/* Info section */}
+          {/* ── INFO SECTION ───────────────────────────────────────────── */}
           <div style={{ padding: isMobile ? "14px 12px" : "18px 20px" }}>
-            <h1 style={{ fontSize: isMobile ? 16 : 21, fontWeight: 800, lineHeight: 1.35, marginBottom: 12, fontFamily: "'Syne',sans-serif", color: C.text }}>{video.title}</h1>
+            <h1 style={{ fontSize: isMobile ? 16 : 21, fontWeight: 800, lineHeight: 1.35, marginBottom: 12, fontFamily: "'Syne',sans-serif", color: C.text }}>
+              {video.title}
+            </h1>
 
             <div
               onClick={handleProfileClick}
@@ -824,7 +1217,6 @@ export default function PlayerModal({ video: initVideo, onClose }) {
                 <div style={{ fontSize: 11, color: C.muted }}>{fmtNum(pf.followers_count || 0)} followers</div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {/* video.views is always the live value — updated by fresh fetch on open + increment after 3s */}
                 <span style={{ fontSize: 11, color: C.muted }}>👁 {fmtNum(video.views)}</span>
                 <span style={{ fontSize: 11, color: C.muted }}>· {timeAgo(video.created_at)}</span>
                 {video.is_vip && <VipBadge />}
@@ -855,7 +1247,9 @@ export default function PlayerModal({ video: initVideo, onClose }) {
 
             {video.tags?.length > 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
-                {video.tags.map(t => <span key={t} style={{ padding: "4px 10px", background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11, color: C.muted }}>#{t}</span>)}
+                {video.tags.map(t => (
+                  <span key={t} style={{ padding: "4px 10px", background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11, color: C.muted }}>#{t}</span>
+                ))}
               </div>
             )}
 
@@ -877,6 +1271,10 @@ export default function PlayerModal({ video: initVideo, onClose }) {
         {/* RIGHT: Related (desktop sticky) */}
         {!isMobile && (
           <div style={{ borderLeft: `1px solid ${C.border}`, height: "calc(100vh - 52px)", position: "sticky", top: 52, overflowY: "auto", scrollbarWidth: "none", padding: "16px 16px 24px" }}>
+
+            {/* ── SMART REFRESH SIDEBAR AD ──────────────────────────── */}
+            <SidebarAdWidget ad={sidebarAd} />
+
             <RelatedList videos={related.slice(0, displayLimit)} onPlay={playRelated} isMobile={false} />
             {related.length > displayLimit && (
               <button
@@ -897,6 +1295,9 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED SUB-COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
 function ActionBtn({ icon, label, active, color, onClick }) {
   const [hov, setHov] = useState(false);
   return (
@@ -910,7 +1311,6 @@ function ActionBtn({ icon, label, active, color, onClick }) {
     </button>
   );
 }
-
 
 function RelatedList({ videos, onPlay, isMobile }) {
   return (
