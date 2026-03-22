@@ -537,6 +537,10 @@ export default function PlayerModal({ video: initVideo, onClose }) {
 
   const { liked, count: likeCount, toggle: toggleLike } = useVideoLike(video.id, false, video.likes_count);
 
+
+  const UNSKIPPABLE_DURATIONS = new Set([5, 6, 10, 30]); // Ensure 30 is here
+  const [isDownloadPending, setIsDownloadPending] = useState(false);
+
   // ── Session / Ad state ────────────────────────────────────────────────────
   const [sessionCount, setSessionCount] = useState(() =>
     parseInt(sessionStorage.getItem("lx_vcount") || "1")
@@ -646,6 +650,34 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     };
   }, []);
 
+
+    const cancelAuto = useCallback(() => {
+    clearInterval(autoTimer.current);
+    setAutoCountdown(null);
+  }, []);
+
+  const playNext = useCallback(() => {
+    cancelAuto();
+    const next = related[0];
+    if (next) {
+      setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 });
+      setProg(0); setCurTime(0); setDur(0);
+    }
+  }, [related, cancelAuto]);
+
+
+    // Separate the actual download logic
+  const executeDownload = useCallback(() => {
+    const a = document.createElement("a");
+    a.href = video.video_url;
+    a.download = (video.title || "video") + ".mp4";
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast("Download started!", "success");
+  }, [video]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // skipAd — called manually (button) or automatically (effect below)
   // ─────────────────────────────────────────────────────────────────────────
@@ -666,10 +698,14 @@ export default function PlayerModal({ video: initVideo, onClose }) {
         vRef.current.play().then(() => setPlaying(true)).catch(() => { });
       }
     } else if (currentAdPart === "post") {
-      // Move to the next video
-      playNext();
+      if (isDownloadPending) {
+        executeDownload();
+        setIsDownloadPending(false); // Reset the flag
+      } else {
+        playNext(); // Normal behavior if not a download ad
+      }
     }
-  }, [currentAdPart]); // playNext added below
+  }, [currentAdPart, isDownloadPending, executeDownload, playNext]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // AUTO-SKIP: when adTime hits 0 AND canSkip is true → fire skipAd.
@@ -685,19 +721,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }
   }, [adActive, canSkip, adTime, skipAd]);
 
-  const cancelAuto = useCallback(() => {
-    clearInterval(autoTimer.current);
-    setAutoCountdown(null);
-  }, []);
 
-  const playNext = useCallback(() => {
-    cancelAuto();
-    const next = related[0];
-    if (next) {
-      setVideo({ ...next, views: Number(next.views_count ?? next.views) || 0 });
-      setProg(0); setCurTime(0); setDur(0);
-    }
-  }, [related, cancelAuto]);
 
   // Fix: skipAd depends on playNext — re-declare with correct dep after playNext is defined.
   // We use a ref trick to avoid circular dependency while keeping playNext stable.
@@ -1007,13 +1031,22 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   };
 
   const handleDownload = () => {
-    const a = document.createElement("a");
-    a.href = video.video_url;
-    a.download = video.title + ".mp4";
-    a.target = "_blank";
-    a.click();
-    showToast("Download started!", "success");
+    // If the user is VIP, maybe skip the ad? Otherwise, trigger ad:
+    if (video.is_vip && profile?.is_vip) {
+      executeDownload();
+      return;
+    }
+
+    showToast("Ad starting... Download will begin after 30s 📥", "info");
+    setIsDownloadPending(true);
+
+    // Trigger a 30s ad using your 'post' type logic 
+    // (using 'post' ensures the video stays paused)
+    startAd(30, "post", sessionCount);
   };
+
+
+
 
   const handleSave = async () => {
     if (!session) { setAuthModal("login"); return; }
