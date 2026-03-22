@@ -138,20 +138,49 @@ const FILTERS = [
 
 
 // ── User Follow Card ─────────────────────────────────────────────────────────
+// ── User Follow Card (Fixed & Database Linked) ───────────────────────────────
 function UserFollowCard({ user }) {
-  const { setTab, setActiveProfile } = useApp();
+  const { session, setTab, setActiveProfile, setAuthModal, showToast } = useApp();
+  
+  // Initialize 'followed' state. In a perfect setup, you'd check this via an API on mount.
   const [followed, setFollowed] = useState(false);
   const [hov, setHov] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleFollow = (e) => {
-    e.stopPropagation();
-    setFollowed(!followed);
-    // You can add your followAPI.toggleFollow here
+  // Clean data from DB
+  const username = user.username || "Anonymous";
+  const avatar = user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
+  const fanCount = user.followers_count || 0;
+
+  const handleFollow = async (e) => {
+    e.stopPropagation(); // Prevent clicking the card/going to profile
+    
+    // 1. Check if user is logged in
+    if (!session) {
+      setAuthModal("login");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 2. Call your actual Supabase API
+      // Assumes followAPI.toggleFollow(followerId, followingId)
+      const isNowFollowing = !followed;
+      await followAPI.toggleFollow(session.user.id, user.id);
+      setFollowed(isNowFollowing);
+      showToast(isNowFollowing ? `Following ${username}` : `Unfollowed ${username}`, "success");
+    } catch (err) {
+      console.error("Follow error:", err);
+      showToast("Could not update follow status", "error");
+    } finally {
+      setLoading(false);
+    }
   };
+
 
   const goToProfile = () => {
     setActiveProfile(user);
-    setTab(`profile:${user.username}`);
+    setTab(`profile:${username}`);
   };
 
   return (
@@ -175,13 +204,14 @@ function UserFollowCard({ user }) {
     >
       <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
         <img
-          src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`}
+          src={avatar}
           style={{
             width: 70, height: 70, borderRadius: "50%",
             border: `2px solid ${followed ? C.green : C.accent}`,
             padding: 3,
-            transition: "transform 0.3s ease",
-            transform: hov ? "scale(1.1)" : "scale(1)"
+            transition: "all 0.3s ease",
+            transform: hov ? "scale(1.1)" : "scale(1)",
+            objectFit: "cover"
           }}
         />
         {user.is_verified && (
@@ -192,14 +222,16 @@ function UserFollowCard({ user }) {
       </div>
 
       <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {user.username}
+        {user.display_name || user.username || "unknown"}
       </div>
+      
       <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>
-        {fmtNum(user.follower_count || 0)} fans
+        {fmtNum(fanCount)} fans
       </div>
 
       <button
         onClick={handleFollow}
+        disabled={loading}
         style={{
           width: "100%",
           padding: "6px 0",
@@ -209,34 +241,61 @@ function UserFollowCard({ user }) {
           color: followed ? C.muted : "white",
           fontSize: 11,
           fontWeight: 700,
-          cursor: "pointer",
-          transition: "all 0.2s"
+          cursor: loading ? "not-allowed" : "pointer",
+          transition: "all 0.2s",
+          opacity: loading ? 0.7 : 1
         }}
       >
-        {followed ? "✓ Following" : "+ Follow"}
+        {loading ? "..." : (followed ? "✓ Following" : "+ Follow")}
       </button>
     </div>
   );
 }
 
 function UserSuggestions() {
-  const { setTab } = useApp(); // Access setTab from context
-  const isMobile = useIsMobile();
+  const { setTab, session, authLoading } = useApp();
+  const [creators, setCreators] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const topUsers = [
-    { username: "AlexStream", follower_count: 12400, is_verified: true },
-    { username: "SarahVlog", follower_count: 8900, is_verified: true },
-    { username: "TechGuru", follower_count: 45000, is_verified: false },
-    { username: "ChefElite", follower_count: 3200, is_verified: true },
-    { username: "GamerPro", follower_count: 102000, is_verified: true },
-    { username: "TravelWithMe", follower_count: 15400, is_verified: false },
-  ];
+  useEffect(() => {
+    // 1. If auth is still checking, do absolutely nothing yet
+    if (authLoading) return;
 
+    const fetchCreators = async () => {
+      try {
+        const data = await followAPI.getRandomCreators(20);
+        setCreators(data);
+      } catch (err) {
+        console.error("Error fetching creators:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchCreators();
+  }, [authLoading]); // Only depend on authLoading to prevent multiple API calls
+
+  // 2. STRICTOR LOADING CHECK: 
+  // Don't even try to process creators until authLoading is false
+  if (authLoading || loading) {
+    return (
+      <div style={{ height: 180, marginBottom: 32 }}>
+        <Skeleton width="100%" height="100%" />
+      </div>
+    );
+  }
+
+  // 3. FILTER IN RENDER: 
+  // This ensures that even if 'creators' state contains 'you', 
+  // it is filtered out visually before the first pixel is drawn.
+  const filteredCreators = creators.filter(user => user.id !== session?.user?.id);
+
+  if (filteredCreators.length === 0) return null;
+//console.log('all',creators,'filteredCreators',filteredCreators)
   return (
     <div style={{ marginBottom: 32 }}>
       <SectionHeader
         title="🌟 Suggested Creators"
-        // --- ADD THESE TWO LINES ---
         action={() => setTab("channels")}
         actionLabel="See all"
       />
@@ -248,14 +307,14 @@ function UserSuggestions() {
         scrollbarWidth: "none",
         padding: "10px 0"
       }}>
-        {topUsers.map(user => (
-          <UserFollowCard key={user.username} user={user} />
+        {/* 4. Use the filtered list here */}
+        {filteredCreators.map(user => (
+          <UserFollowCard key={user.id} user={user} />
         ))}
       </div>
     </div>
   );
 }
-
 
 
 export default function HomePage({ tab }) {
