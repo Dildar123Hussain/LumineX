@@ -1,11 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
+import { AVATARS } from '../data/theme';
 const URL = process.env.REACT_APP_SUPABASE_URL || "https://your-project.supabase.co";
 const ANON = process.env.REACT_APP_SUPABASE_ANON || "your-anon-key";
+
 
 export const supabase = createClient(URL, ANON, {
   auth: { persistSession: true, autoRefreshToken: true },
   realtime: { params: { eventsPerSecond: 10 } },
 });
+
 
 // ── In-memory cache ────────────────────────────────────────────────────────
 const CACHE = new Map();
@@ -21,21 +24,35 @@ export const cache = {
 
 // ── Auth API ────────────────────────────────────────────────────────────────
 export const authAPI = {
-  async signUp({ email, password, username, displayName }) {
-    // Email format validation
+
+  async signUp({ email, password, username, displayName, avatarId }) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Invalid email address");
+
     const taken = await profileAPI.checkUsername(username);
     if (taken) throw new Error("Username is already taken");
+
+    const selectedAvatar = AVATARS.find(av => av.id === avatarId);
+    const avatarEmoji = selectedAvatar?.emoji || "🦋";
+    const avatarBg = selectedAvatar?.bg || "linear-gradient(135deg,#c084fc,#818cf8)";
+
     const { data, error } = await supabase.auth.signUp({
-      email, password, options: {
-        // This helps Supabase link the metadata immediately
-        data: { username: username.toLowerCase(), display_name: displayName }
+      email,
+      password,
+      options: {
+        data: {
+          username: username.toLowerCase().trim(),
+          display_name: displayName,
+          avatar_emoji: avatarEmoji,
+          avatar_bg: avatarBg,
+          avatar_id: avatarId,
+        }
       }
     });
+
     if (error) throw error;
-    console.log(data, 'eee', error)
     return data;
   },
+
 
   async signIn({ email, password }) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Invalid email address");
@@ -76,16 +93,18 @@ export const profileAPI = {
   async getById(id) {
     const cached = cache.get(`profile:${id}`);
     if (cached) return cached;
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", id).single();
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle();
     if (error) throw error;
+    if (!data) return null;
     return cache.set(`profile:${id}`, data);
   },
 
   async getByUsername(username) {
     const cached = cache.get(`profile:u:${username}`);
     if (cached) return cached;
-    const { data, error } = await supabase.from("profiles").select("*").eq("username", username.toLowerCase()).single();
+    const { data, error } = await supabase.from("profiles").select("*").eq("username", username.toLowerCase().trim()).maybeSingle();
     if (error) throw error;
+    if (!data) return null;
     return cache.set(`profile:u:${username}`, data);
   },
 
@@ -123,6 +142,7 @@ export const profileAPI = {
 
 // ── Follow API ──────────────────────────────────────────────────────────────
 export const followAPI = {
+
   async isFollowing(followerId, followingId) {
     if (!followerId) return false;
     const k = `follow:${followerId}:${followingId}`;
@@ -132,13 +152,21 @@ export const followAPI = {
     return cache.set(k, !!data, TTL.short);
   },
 
+  async getRandomCreators(limit = 26) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .limit(30);
+    if (error) throw error;
+    return data.sort(() => 0.5 - Math.random()).slice(0, limit);
+  },
+
   async follow(followerId, followingId) {
     const { error } = await supabase.from("follows").insert({ follower_id: followerId, following_id: followingId });
     if (error) throw error;
     cache.bust(`follow:${followerId}`);
     cache.bust(`profile:${followerId}`);
     cache.bust(`profile:${followingId}`);
-    // Create notification
     await notifAPI.create({ userId: followingId, actorId: followerId, type: "follow" }).catch(() => { });
   },
 
@@ -173,6 +201,234 @@ export const followAPI = {
     const { data } = await supabase.from("follows").select("following_id").eq("follower_id", userId);
     return cache.set(k, (data || []).map(d => d.following_id), TTL.short);
   },
+
+  // ── NEW: Send a follow request ───────────────────────────────────────────
+  // Inserts a row into follow_requests with status="pending".
+  // The recipient gets a realtime INSERT event via subscribeToFollowRequests().
+  // If a rejected request already exists, it is re-opened (status → pending).
+  // If a pending request already exists, it is a no-op (returns alreadyPending).
+  async sendFollowRequest(senderId, recipientId) {
+    if (!senderId || !recipientId) throw new Error("Missing sender or recipient");
+    if (senderId === recipientId) throw new Error("Cannot follow yourself");
+
+    // Check for an existing row (pending OR rejected)
+    const { data: existing } = await supabase
+      .from("follow_requests")
+      .select("id, status")
+      .eq("sender_id", senderId)
+      .eq("recipient_id", recipientId)
+      .maybeSingle();
+
+    if (existing) {
+      if (existing.status === "pending") return { alreadyPending: true };
+      // Re-open a previously rejected request
+      if (existing.status === "rejected") {
+        const { error } = await supabase
+          .from("follow_requests")
+          .update({ status: "pending", created_at: new Date().toISOString() })
+          .eq("id", existing.id);
+        if (error) throw error;
+        return { reSent: true };
+      }
+    }
+
+    // Fresh insert
+    const { data, error } = await supabase
+      .from("follow_requests")
+      .insert({
+        sender_id: senderId,
+        recipient_id: recipientId,
+        status: "pending",
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Create a notification so the recipient also sees it in their notif bell
+    await notifAPI.create({
+      userId: recipientId,
+      actorId: senderId,
+      type: "follow_request",
+    }).catch(() => {});
+
+    return data;
+  },
+
+  // ── NEW: Accept a follow request ─────────────────────────────────────────
+  // 1. Inserts into follows
+  // 2. Increments followers_count on recipient  (via RPC, with manual fallback)
+  // 3. Increments following_count on sender     (via RPC, with manual fallback)
+  // 4. Notifies sender that their request was accepted
+  // 5. Marks request status = "accepted"
+  async acceptFollowRequest(requestId, senderId, recipientId) {
+    if (!requestId || !senderId || !recipientId) throw new Error("Missing required fields for accept");
+
+    // 1. Insert follow relationship (upsert prevents duplicate key error)
+    const { error: followError } = await supabase
+      .from("follows")
+      .upsert(
+        { follower_id: senderId, following_id: recipientId },
+        { onConflict: "follower_id,following_id" }
+      );
+    if (followError) throw followError;
+
+    // 2. Increment recipients followers_count
+    const { error: rpc1Err } = await supabase
+      .rpc("increment_followers_count", { target_user_id: recipientId });
+    if (rpc1Err) {
+      // Manual fallback — works even without the RPC
+      console.warn("RPC increment_followers_count unavailable, using fallback");
+      const { data: rp } = await supabase
+        .from("profiles").select("followers_count").eq("id", recipientId).single();
+      if (rp) {
+        await supabase.from("profiles")
+          .update({ followers_count: (rp.followers_count || 0) + 1 })
+          .eq("id", recipientId);
+      }
+    }
+
+    // 3. Increment senders following_count
+    const { error: rpc2Err } = await supabase
+      .rpc("increment_following_count", { target_user_id: senderId });
+    if (rpc2Err) {
+      // Manual fallback
+      console.warn("RPC increment_following_count unavailable, using fallback");
+      const { data: sp } = await supabase
+        .from("profiles").select("following_count").eq("id", senderId).single();
+      if (sp) {
+        await supabase.from("profiles")
+          .update({ following_count: (sp.following_count || 0) + 1 })
+          .eq("id", senderId);
+      }
+    }
+
+    // 4. Notify the sender — "X accepted your follow request"
+    await notifAPI.create({
+      userId: senderId,
+      actorId: recipientId,
+      type: "follow_accepted",
+    }).catch(() => {});
+
+    // 5. Mark request as accepted (keeps an audit trail)
+    await supabase
+      .from("follow_requests")
+      .update({ status: "accepted" })
+      .eq("id", requestId);
+
+    // Bust relevant caches
+    cache.bust(`follow:${senderId}`);
+    cache.bust(`followingIds:${senderId}`);
+    cache.bust(`profile:${recipientId}`);
+    cache.bust(`profile:${senderId}`);
+  },
+
+  // ── NEW: Reject a follow request ─────────────────────────────────────────
+  // Marks status = "rejected". Sender can re-request later (sendFollowRequest
+  // will detect the rejected row and flip it back to pending).
+  async rejectFollowRequest(requestId) {
+    if (!requestId) throw new Error("Missing requestId");
+    const { error } = await supabase
+      .from("follow_requests")
+      .update({ status: "rejected" })
+      .eq("id", requestId);
+    if (error) throw error;
+  },
+
+  // ── NEW: Load all pending requests for a user (called on page load) ──────
+  // Returns shaped objects the FollowRequestToast component expects.
+  async getPendingRequests(recipientId) {
+    if (!recipientId) return [];
+    const { data, error } = await supabase
+      .from("follow_requests")
+      .select(`
+        id,
+        sender_id,
+        created_at,
+        sender:profiles!follow_requests_sender_id_fkey (
+          id, username, display_name, avatar_url, avatar_emoji, avatar_bg
+        )
+      `)
+      .eq("recipient_id", recipientId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("getPendingRequests error:", error.message);
+      return [];
+    }
+
+    return (data || []).map(r => ({
+      id: r.id,
+      sender_id: r.sender_id,
+      sender_username: r.sender?.username || "",
+      sender_display_name: r.sender?.display_name || r.sender?.username || "Someone",
+      sender_avatar: r.sender?.avatar_url
+        || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.sender?.username}`,
+    }));
+  },
+
+  // ── NEW: Check if a follow request is already pending/accepted/rejected ──
+  // Used by UserFollowCard on mount to restore correct button state
+  // ("+ Follow" vs "⏳ Requested" vs "✓ Following").
+  async getRequestStatus(senderId, recipientId) {
+    if (!senderId || !recipientId) return null;
+    const { data } = await supabase
+      .from("follow_requests")
+      .select("id, status")
+      .eq("sender_id", senderId)
+      .eq("recipient_id", recipientId)
+      .maybeSingle();
+    return data?.status || null; // "pending" | "accepted" | "rejected" | null
+  },
+
+  // ── NEW: Realtime subscription for incoming follow requests ──────────────
+  // Call from a useEffect. Returns the channel — caller must clean up:
+  //
+  //   useEffect(() => {
+  //     const ch = followAPI.subscribeToFollowRequests(userId, (req) => {
+  //       setPendingRequests(prev => [req, ...prev]);
+  //     });
+  //     return () => supabase.removeChannel(ch);
+  //   }, [userId]);
+  //
+  subscribeToFollowRequests(recipientId, onNewRequest) {
+    const channel = supabase
+      .channel(`follow_requests:recipient:${recipientId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "follow_requests",
+          filter: `recipient_id=eq.${recipientId}`,
+        },
+        async (payload) => {
+          try {
+            const { data: sender } = await supabase
+              .from("profiles")
+              .select("id, username, display_name, avatar_url, avatar_emoji")
+              .eq("id", payload.new.sender_id)
+              .single();
+
+            onNewRequest({
+              id: payload.new.id,
+              sender_id: payload.new.sender_id,
+              sender_username: sender?.username || "",
+              sender_display_name: sender?.display_name || sender?.username || "Someone",
+              sender_avatar: sender?.avatar_url
+                || `https://api.dicebear.com/7.x/avataaars/svg?seed=${sender?.username}`,
+            });
+          } catch (err) {
+            console.error("subscribeToFollowRequests error:", err);
+          }
+        }
+      )
+      .subscribe();
+
+    return channel;
+  },
 };
 
 // ── Video API ────────────────────────────────────────────────────────────────
@@ -184,7 +440,6 @@ export const videoAPI = {
       .range(page * limit, (page + 1) * limit - 1);
     if (category) q = q.eq("category", category);
     if (userId) q = q.eq("user_id", userId);
-    // prioritise following if provided
     if (followingIds?.length) {
       q = supabase.from("videos")
         .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count)")
@@ -214,16 +469,19 @@ export const videoAPI = {
     return data || [];
   },
 
- // src/lib/supabase.js
-async incrementViews(id) {
-  const { data, error } = await supabase.rpc("increment_views", { video_id: id });
-  if (error) throw error;
-  
-  // Clear cache so other parts of the app get fresh data on next load
-  cache.del(`video:${id}`); 
-  
-  return data; // This is now the actual number (e.g., 10)
-},
+  async getViewCount(videoId) {
+    const { data, error } = await supabase
+      .from("videos").select("views_count").eq("id", videoId).single();
+    if (error) throw error;
+    return data?.views_count ?? null;
+  },
+
+  async incrementViews(id) {
+    const { data, error } = await supabase.rpc("increment_views", { video_id: id });
+    if (error) throw error;
+    cache.del(`video:${id}`);
+    return data;
+  },
 
   async upload({ userId, file, thumbnail, title, description, category, tags, isVip, duration }) {
     const ext = file.name.split(".").pop();
@@ -244,7 +502,6 @@ async incrementViews(id) {
     }).select("*, profiles(id,username,display_name,avatar_url)").single();
     if (error) throw error;
     cache.bust("feed:");
-    // Notify followers
     await notifAPI.notifyFollowers(userId, "video", data.id).catch(() => { });
     return data;
   },
@@ -281,16 +538,12 @@ export const likeAPI = {
     cache.del(`video:${videoId}`);
   },
 
-async isSaved(userId, videoId) {
+  async isSaved(userId, videoId) {
     if (!userId) return false;
-    // 1. Check Cache first
     const k = `save:${userId}:${videoId}`;
     const c = cache.get(k);
     if (c !== null) return c;
-
     const { data } = await supabase.from("saved_videos").select("id").eq("user_id", userId).eq("video_id", videoId).maybeSingle();
-    
-    // 2. Set Cache
     return cache.set(k, !!data, TTL.short);
   },
 
@@ -300,7 +553,6 @@ async isSaved(userId, videoId) {
     } else {
       await supabase.from("saved_videos").insert({ user_id: userId, video_id: videoId });
     }
-    // 3. Clear Cache on change
     cache.del(`save:${userId}:${videoId}`);
   },
 
@@ -324,47 +576,22 @@ export const commentAPI = {
   async getForVideo(videoId) {
     const { data, error } = await supabase
       .from("comments")
-      .select(`
-        *, 
-        profiles:user_id (id, username, display_name, avatar_url, avatar_emoji, avatar_bg)
-      `)
+      .select(`*, profiles:user_id (id, username, display_name, avatar_url, avatar_emoji, avatar_bg)`)
       .eq("video_id", videoId)
-      // REMOVED: .is("parent_id", null) <- This was the bug!
       .order("created_at", { ascending: false });
-
     if (error) throw error;
     return data || [];
   },
 
   async add({ videoId, userId, body, parentId = null, videoOwnerId = null, reply_to_user = null }) {
-    // 1. Include reply_to_user in the insert object
     const { data, error } = await supabase.from("comments")
-      .insert({
-        video_id: videoId,
-        user_id: userId,
-        body,
-        parent_id: parentId,
-        reply_to_user: reply_to_user // This ensures it saves to the DB
-      })
+      .insert({ video_id: videoId, user_id: userId, body, parent_id: parentId, reply_to_user })
       .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg)")
       .single();
-
-    if (error) {
-      console.error('Supabase Insert Error:', error);
-      throw error;
-    }
-
-    // 2. Notify video owner (if not commenting on own video)
+    if (error) { console.error('Supabase Insert Error:', error); throw error; }
     if (videoOwnerId && videoOwnerId !== userId && !parentId) {
-      await notifAPI.create({
-        userId: videoOwnerId,
-        actorId: userId,
-        type: "comment",
-        videoId,
-        commentId: data.id
-      }).catch(() => { });
+      await notifAPI.create({ userId: videoOwnerId, actorId: userId, type: "comment", videoId, commentId: data.id }).catch(() => { });
     }
-
     return data;
   },
 
@@ -404,7 +631,7 @@ export const notifAPI = {
   },
 
   async create({ userId, actorId, type, videoId = null, commentId = null }) {
-    if (userId === actorId) return; // don't self-notify
+    if (userId === actorId) return;
     await supabase.from("notifications").insert({
       user_id: userId, actor_id: actorId, type,
       video_id: videoId || null,
@@ -426,7 +653,6 @@ export const notifAPI = {
   },
 
   async notifyFollowers(userId, type, videoId = null) {
-    // Get all followers and notify them
     const { data } = await supabase.from("follows").select("follower_id").eq("following_id", userId);
     if (!data?.length) return;
     const inserts = data.map(d => ({ user_id: d.follower_id, actor_id: userId, type, video_id: videoId }));
@@ -457,12 +683,8 @@ export const historyAPI = {
     const { error } = await supabase
       .from("watch_history")
       .upsert(
-        { 
-          user_id: userId, 
-          video_id: videoId, 
-          watched_at: new Date().toISOString() 
-        },
-        { onConflict: 'user_id, video_id' } 
+        { user_id: userId, video_id: videoId, watched_at: new Date().toISOString() },
+        { onConflict: 'user_id, video_id' }
       );
     if (error) console.error("Error updating history:", error.message);
   },
@@ -471,31 +693,18 @@ export const historyAPI = {
     if (!userId) return [];
     const { data, error } = await supabase
       .from("watch_history")
-      .select(`
-        id,
-        watched_at,
-        video:video_id (
-          id, title, thumbnail_url, video_url, views, category, duration
-        )
-      `)
+      .select(`id, watched_at, video:video_id (id, title, thumbnail_url, video_url, views, category, duration)`)
       .eq("user_id", userId)
       .order("watched_at", { ascending: false });
-
     if (error) return [];
-    return data.map(item => ({
-      ...item.video,
-      watched_at: item.watched_at,
-      historyId: item.id
-    }));
+    return data.map(item => ({ ...item.video, watched_at: item.watched_at, historyId: item.id }));
   },
 
-  // NEW: Pure database delete function
   async deleteHistoryItem(historyId) {
     return await supabase.from("watch_history").delete().eq("id", historyId);
   },
 
-  // NEW: Pure database clear function
   async clearAllHistory(userId) {
     return await supabase.from("watch_history").delete().eq("user_id", userId);
-  }
+  },
 };
