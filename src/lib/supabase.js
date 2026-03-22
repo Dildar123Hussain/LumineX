@@ -202,6 +202,47 @@ export const followAPI = {
     return cache.set(k, (data || []).map(d => d.following_id), TTL.short);
   },
 
+  // In your followAPI library
+  cancelFollowRequest: async (senderId, recipientId) => {
+
+    //console.log("Types:", typeof senderId, typeof recipientId);
+    //console.log("Values:", `|${senderId}|`, `|${recipientId}|`); // Pipe symbols show hidden spaces
+    try {
+      // 1. Basic Validation
+      if (!senderId || !recipientId) {
+        throw new Error("Missing sender or recipient ID");
+      }
+      if (senderId === recipientId) throw new Error("Cannot follow yourself");
+      // 2. Perform the deletion with multiple safety constraints
+      const { data, error, count } = await supabase
+        .from("follow_requests")
+        .delete({ count: 'exact' }) // Returns how many rows were actually deleted
+        .match({
+          sender_id: senderId,
+          recipient_id: recipientId,
+          status: 'pending' // Ensures we don't delete an 'accepted' history record
+        });
+
+      console.log('da', data, 'err,', count)
+
+      if (error) throw error;
+
+
+      // 3. Logic Check: If count is 0, the request might have been 
+      // handled by the recipient while the sender was looking at the screen.
+      if (count === 0) {
+        return {
+          success: false,
+          message: "Request no longer exists (it may have been accepted or declined already)."
+        };
+      }
+      return { success: true, data };
+    } catch (err) {
+      console.error("Critical error in cancelFollowRequest:", err.message);
+      return { success: false, error: err.message };
+    }
+  },
+
   // ── NEW: Send a follow request ───────────────────────────────────────────
   // Inserts a row into follow_requests with status="pending".
   // The recipient gets a realtime INSERT event via subscribeToFollowRequests().
@@ -251,7 +292,7 @@ export const followAPI = {
       userId: recipientId,
       actorId: senderId,
       type: "follow_request",
-    }).catch(() => {});
+    }).catch(() => { });
 
     return data;
   },
@@ -309,7 +350,7 @@ export const followAPI = {
       userId: senderId,
       actorId: recipientId,
       type: "follow_accepted",
-    }).catch(() => {});
+    }).catch(() => { });
 
     // 5. Mark request as accepted (keeps an audit trail)
     await supabase
