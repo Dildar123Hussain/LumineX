@@ -467,18 +467,18 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
             style={{
               padding: isMobile ? "8px 16px" : "10px 22px",
               fontSize: isMobile ? 11 : 13,
-              background: canSkip ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.08)",
-              color: canSkip ? "#000" : "#f1e7e7",
+              background: canSkip ? "#fff" : "#fff",
+              color: canSkip ? "#0a0a0a" : "#090909",
               border: "none",
               borderRadius: 8,
               fontWeight: 800,
               cursor: canSkip ? "pointer" : "default",
               transition: "all 0.2s ease",
-              opacity: canSkip ? 1 : 0.6,
+              opacity: canSkip ? 0.6 : 0.6,
               whiteSpace: "nowrap"
             }}
           >
-            {canSkip ? "Skip Ad " : "Skip Ad"}
+            End in
           </button>
         </div>
       </div>
