@@ -1,10 +1,28 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React,{ useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { C, SectionHeader, HScroll, FilterChip, Skeleton, EmptyState, fmtNum, VerifiedBadge } from "../components/ui/index";
 import { useApp } from "../context/AppContext";
 import { videoAPI, followAPI, likeAPI, historyAPI } from "../lib/supabase"; // Ensure historyAPI is imported
 import { useIsMobile, useInfiniteScroll } from "../hooks/index";
 import VideoCard from "../components/VideoCard";
 import { DEMO_VIDEOS, CATEGORIES } from "../data/theme";
+
+
+const MultiplexAdUnit = () => (
+  <div className="ad-grid-container" style={{ 
+    gridColumn: '1 / -1', // Spans across all columns in your CSS grid
+    margin: '20px 0',
+    padding: '10px',
+    background: '#1a1a1a', // Matches LumineX dark theme
+    borderRadius: '12px',
+    border: '1px solid #333'
+  }}>
+    <span style={{ fontSize: '12px', color: '#666', marginBottom: '8px', display: 'block' }}>
+      Recommended for You
+    </span>
+    {/* INSERT YOUR AD NETWORK SCRIPT HERE */}
+    <div id="ad-slot-12345"></div> 
+  </div>
+);
 
 // ── Animated Category Card ────────────────────────────────────────────────────
 function CategoryCard({ cat, onClick }) {
@@ -72,16 +90,15 @@ function HeroBanner() {
   );
 }
 
-// ── Video grid with skeleton ─────────────────────────────────────────────────
-function VideoGrid({ videos, loading }) {
-  const isMobile = useIsMobile();
+// ── Video grid with Multiplex Ad Injection ──────────────────────────────────
+function VideoGrid({ videos, loading, isMobile }) {
   const gridStyle = {
     display: "grid",
     gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(260px, 1fr))",
     gap: isMobile ? 10 : 14,
   };
 
-  if (loading) return (
+  if (loading && videos.length === 0) return (
     <div style={gridStyle}>
       {Array(6).fill(0).map((_, i) => (
         <div key={i}>
@@ -93,7 +110,25 @@ function VideoGrid({ videos, loading }) {
     </div>
   );
 
-  return <div style={gridStyle}>{videos.map(v => <VideoCard key={v.id} video={v} />)}</div>;
+  return (
+    <div style={gridStyle}>
+      {videos.map((v, index) => (
+        <React.Fragment key={v.id || index}>
+          <VideoCard video={v} />
+          
+          {/* DESKTOP: Show after first row (4th item) */}
+          {!isMobile && index === 3 && <MultiplexAdUnit />}
+
+          {/* MOBILE: Show after the first 6 videos so it's not at the very bottom */}
+          {/* This ensures the user sees an ad before they stop scrolling */}
+          {isMobile && index === 5 && <MultiplexAdUnit />}
+
+          {/* Optional: Show at the very end as well for extra revenue */}
+          {isMobile && index === videos.length - 1 && videos.length > 6 && <MultiplexAdUnit />}
+        </React.Fragment>
+      ))}
+    </div>
+  );
 }
 
 const FILTERS = [
@@ -513,7 +548,7 @@ export default function HomePage({ tab }) {
               )}
             </>
           ) : (
-            <VideoGrid videos={displayed} loading={loading && videos.length === 0} />
+            <VideoGrid videos={displayed} loading={loading && videos.length === 0} isMobile={isMobile}/>
           )}
 
           {hasMore && !loading && tab !== "history" && tab !== "saved" && (
