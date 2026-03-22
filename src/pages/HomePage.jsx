@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { C, SectionHeader, HScroll, FilterChip, Skeleton, EmptyState, fmtNum,VerifiedBadge } from "../components/ui/index";
+import { C, SectionHeader, HScroll, FilterChip, Skeleton, EmptyState, fmtNum, VerifiedBadge } from "../components/ui/index";
 import { useApp } from "../context/AppContext";
 import { videoAPI, followAPI, likeAPI, historyAPI } from "../lib/supabase"; // Ensure historyAPI is imported
 import { useIsMobile, useInfiniteScroll } from "../hooks/index";
@@ -120,7 +120,7 @@ function UserFollowCard({ user }) {
   };
 
   return (
-    <div 
+    <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       onClick={goToProfile}
@@ -139,15 +139,15 @@ function UserFollowCard({ user }) {
       }}
     >
       <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
-        <img 
-          src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} 
-          style={{ 
-            width: 70, height: 70, borderRadius: "50%", 
+        <img
+          src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`}
+          style={{
+            width: 70, height: 70, borderRadius: "50%",
             border: `2px solid ${followed ? C.green : C.accent}`,
             padding: 3,
             transition: "transform 0.3s ease",
             transform: hov ? "scale(1.1)" : "scale(1)"
-          }} 
+          }}
         />
         {user.is_verified && (
           <div style={{ position: "absolute", bottom: 0, right: 0, background: C.bg, borderRadius: "50%", padding: 2 }}>
@@ -163,7 +163,7 @@ function UserFollowCard({ user }) {
         {fmtNum(user.follower_count || 0)} fans
       </div>
 
-      <button 
+      <button
         onClick={handleFollow}
         style={{
           width: "100%",
@@ -199,13 +199,13 @@ function UserSuggestions() {
 
   return (
     <div style={{ marginBottom: 32 }}>
-      <SectionHeader 
-        title="🌟 Suggested Creators" 
+      <SectionHeader
+        title="🌟 Suggested Creators"
         // --- ADD THESE TWO LINES ---
-        action={() => setTab("channels")} 
-        actionLabel="See all" 
+        action={() => setTab("channels")}
+        actionLabel="See all"
       />
-      
+
       <div style={{
         display: "flex",
         gap: 15,
@@ -234,6 +234,49 @@ export default function HomePage({ tab }) {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 10;
+
+
+  // --- OPTIMIZED AD SYSTEM LOGIC (2 HOUR CAP + DIRECT LINK FIX) ---
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      const lastAdTime = localStorage.getItem('last_pop_time');
+      const now = Date.now();
+      const TWO_HOURS = 2 * 60 * 60 * 1000;
+
+      // Only trigger if 2 hours have passed
+      if (!lastAdTime || (now - parseInt(lastAdTime)) > TWO_HOURS) {
+
+        /** * FIX: Use a DIRECT Link here. 
+         * Avoid "link lockers" or "smart links" that redirect 5 times.
+         * A direct affiliate/offer link ensures the 'Back' button works.
+         */
+        const DIRECT_AD_URL = 'https://your-direct-ad-link.com';
+
+        // 1. Open the direct ad in a new tab
+        const adWindow = window.open(DIRECT_AD_URL, '_blank');
+
+        if (adWindow) {
+          // 2. Immediate Feedback: Keep the user on LumineX
+          // On mobile, this ensures the browser doesn't "freeze" on a white redirect page
+          window.focus();
+
+          // 3. Save timestamp to prevent spamming the user
+          localStorage.setItem('last_pop_time', now.toString());
+
+          // 4. Cleanup: Remove listener so subsequent clicks don't open more ads
+          window.removeEventListener('click', handleGlobalClick);
+
+          console.log("Direct Ad served. Navigation history preserved.");
+        }
+      }
+    };
+
+    // Attach listener to the window
+    window.addEventListener('click', handleGlobalClick);
+
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -307,7 +350,7 @@ export default function HomePage({ tab }) {
           followingIds: followingIds?.length ? followingIds : null
         }).catch(() => DEMO_VIDEOS.slice(nextPage * LIMIT, (nextPage + 1) * LIMIT));
       }
-   
+
       const filtered = (data || []).filter(v => !catFilter || v.category === catFilter);
 
       if (reset)
@@ -374,21 +417,21 @@ export default function HomePage({ tab }) {
         </div>
       )}
 
-    {tab === "home" && !catFilter && (
-  <>
-    {/* ── NEW SECTION ADDED HERE ── */}
-    <UserSuggestions />
+      {tab === "home" && !catFilter && (
+        <>
+          {/* ── NEW SECTION ADDED HERE ── */}
+          <UserSuggestions />
 
-    {trending.length > 0 && (
-      <div style={{ marginBottom: 28 }}>
-        <SectionHeader title="🔥 Trending Now" />
-        <HScroll hideArrows={isMobile}>
-          {trending.map(v => <VideoCard key={v.id} video={v} cardWidth={isMobile ? 200 : 260} />)}
-        </HScroll>
-      </div>
-    )}
-  </>
-)}
+          {trending.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <SectionHeader title="🔥 Trending Now" />
+              <HScroll hideArrows={isMobile}>
+                {trending.map(v => <VideoCard key={v.id} video={v} cardWidth={isMobile ? 200 : 260} />)}
+              </HScroll>
+            </div>
+          )}
+        </>
+      )}
 
       {tab === "home" && !catFilter && (
         <div style={{ marginBottom: 28 }}>
@@ -405,23 +448,23 @@ export default function HomePage({ tab }) {
         {FILTERS.map(f => <FilterChip key={f.value} label={f.label} active={filter === f.value} onClick={() => setFilter(f.value)} />)}
       </div>
 
-<div style={{ 
-  // Adds extra space at the top ONLY on mobile when not on the home tab
-  marginTop: isMobile && tab !== "home" ? 20 : 0,
-  padding: isMobile ? "0 4px" : 0 
-}}>
-  <SectionHeader 
-    title={
-      tab === "history" ? "🕒 Watch History" :
-      tab === "trending" ? "🔥 Trending Videos" :
-      tab === "saved" ? "❤️ Saved Videos" :
-      catFilter ? `📂 ${catFilter}` : "🎬 All Videos"
-    }
-    // Fixed: Ensure action only shows for history and when there's actually content
-    action={tab === "history" && videos.length > 0 ? handleClearAll : null}
-    actionLabel={tab === "history" && videos.length > 0 ? "Clear All" : null}
-  />
-</div>
+      <div style={{
+        // Adds extra space at the top ONLY on mobile when not on the home tab
+        marginTop: isMobile && tab !== "home" ? 20 : 0,
+        padding: isMobile ? "0 4px" : 0
+      }}>
+        <SectionHeader
+          title={
+            tab === "history" ? "🕒 Watch History" :
+              tab === "trending" ? "🔥 Trending Videos" :
+                tab === "saved" ? "❤️ Saved Videos" :
+                  catFilter ? `📂 ${catFilter}` : "🎬 All Videos"
+          }
+          // Fixed: Ensure action only shows for history and when there's actually content
+          action={tab === "history" && videos.length > 0 ? handleClearAll : null}
+          actionLabel={tab === "history" && videos.length > 0 ? "Clear All" : null}
+        />
+      </div>
 
       {!loading && displayed.length === 0 ? (
         <EmptyState
