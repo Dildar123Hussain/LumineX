@@ -1,26 +1,25 @@
-import React,{ useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { C, SectionHeader, HScroll, FilterChip, Skeleton, EmptyState, fmtNum, VerifiedBadge } from "../components/ui/index";
 import { useApp } from "../context/AppContext";
-import { videoAPI, followAPI, likeAPI, historyAPI } from "../lib/supabase"; // Ensure historyAPI is imported
+import { videoAPI, followAPI, likeAPI, historyAPI, supabase } from "../lib/supabase";
 import { useIsMobile, useInfiniteScroll } from "../hooks/index";
 import VideoCard from "../components/VideoCard";
 import { DEMO_VIDEOS, CATEGORIES } from "../data/theme";
 
 
 const MultiplexAdUnit = () => (
-  <div className="ad-grid-container" style={{ 
-    gridColumn: '1 / -1', // Spans across all columns in your CSS grid
+  <div className="ad-grid-container" style={{
+    gridColumn: '1 / -1',
     margin: '20px 0',
     padding: '10px',
-    background: '#1a1a1a', // Matches LumineX dark theme
+    background: '#1a1a1a',
     borderRadius: '12px',
     border: '1px solid #333'
   }}>
     <span style={{ fontSize: '12px', color: '#666', marginBottom: '8px', display: 'block' }}>
       Recommended for You
     </span>
-    {/* INSERT YOUR AD NETWORK SCRIPT HERE */}
-    <div id="ad-slot-12345"></div> 
+    <div id="ad-slot-12345"></div>
   </div>
 );
 
@@ -90,7 +89,7 @@ function HeroBanner() {
   );
 }
 
-// ── Video grid with Multiplex Ad Injection ──────────────────────────────────
+// ── Video grid with Multiplex Ad Injection ────────────────────────────────────
 function VideoGrid({ videos, loading, isMobile }) {
   const gridStyle = {
     display: "grid",
@@ -115,15 +114,8 @@ function VideoGrid({ videos, loading, isMobile }) {
       {videos.map((v, index) => (
         <React.Fragment key={v.id || index}>
           <VideoCard video={v} />
-          
-          {/* DESKTOP: Show after first row (4th item) */}
           {!isMobile && index === 3 && <MultiplexAdUnit />}
-
-          {/* MOBILE: Show after the first 6 videos so it's not at the very bottom */}
-          {/* This ensures the user sees an ad before they stop scrolling */}
           {isMobile && index === 5 && <MultiplexAdUnit />}
-
-          {/* Optional: Show at the very end as well for extra revenue */}
           {isMobile && index === videos.length - 1 && videos.length > 6 && <MultiplexAdUnit />}
         </React.Fragment>
       ))}
@@ -136,42 +128,175 @@ const FILTERS = [
   { label: "👑 VIP", value: "vip" }, { label: "Free", value: "free" },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FOLLOW REQUEST NOTIFICATION TOAST
+// Shows at top-right (desktop) or top (mobile) when someone sends a follow req
+// ─────────────────────────────────────────────────────────────────────────────
+function FollowRequestToast({ requests, onAccept, onReject, isMobile }) {
+  if (!requests || requests.length === 0) return null;
 
-// ── User Follow Card ─────────────────────────────────────────────────────────
-// ── User Follow Card (Fixed & Database Linked) ───────────────────────────────
-function UserFollowCard({ user }) {
+  return (
+    <div style={{
+      position: "fixed",
+      top: isMobile ? 60 : 70,
+      right: isMobile ? 0 : 20,
+      left: isMobile ? 0 : "auto",
+      zIndex: 99999,
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      padding: isMobile ? "0 12px" : 0,
+      pointerEvents: "none",
+    }}>
+      {requests.map((req) => (
+        <div
+          key={req.id}
+          style={{
+            background: "rgba(15,15,25,0.97)",
+            backdropFilter: "blur(20px)",
+            border: `1px solid ${C.accent}44`,
+            borderRadius: 16,
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: `0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px ${C.accent}22`,
+            animation: "slideInRight 0.35s cubic-bezier(0.34,1.2,0.64,1)",
+            pointerEvents: "all",
+            maxWidth: isMobile ? "100%" : 360,
+            width: isMobile ? "100%" : "auto",
+          }}
+        >
+          {/* Avatar */}
+          <img
+            src={req.sender_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.sender_username}`}
+            alt={req.sender_username}
+            style={{
+              width: 42, height: 42, borderRadius: "50%",
+              border: `2px solid ${C.accent}`,
+              flexShrink: 0, objectFit: "cover",
+            }}
+          />
+
+          {/* Text */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>
+              Follow Request
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ color: C.accent, fontWeight: 600 }}>
+                {req.sender_display_name || req.sender_username}
+              </span>{" "}
+              wants to follow you
+            </div>
+          </div>
+
+          {/* Accept / Reject buttons */}
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button
+              onClick={() => onAccept(req)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                background: `linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`,
+                border: "none",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "transform 0.15s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.06)"}
+              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+            >
+              ✓ Accept
+            </button>
+            <button
+              onClick={() => onReject(req)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                background: "rgba(255,255,255,0.07)",
+                border: `1px solid ${C.border}`,
+                color: C.muted,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "transform 0.15s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.06)"}
+              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <style>{`
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(${isMobile ? "0" : "60px"}) translateY(${isMobile ? "-20px" : "0"}); }
+          to   { opacity: 1; transform: translateX(0) translateY(0); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER FOLLOW CARD
+// KEY FIX: receives `initialFollowed` so it never shows wrong state on mount
+function UserFollowCard({ user, initialFollowed = false, initialRequested = false }) {
   const { session, setTab, setActiveProfile, setAuthModal, showToast } = useApp();
-  
-  // Initialize 'followed' state. In a perfect setup, you'd check this via an API on mount.
-  const [followed, setFollowed] = useState(false);
   const [hov, setHov] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [followed, setFollowed] = useState(initialFollowed);
 
-  // Clean data from DB
+  // Now this line will work because initialRequested is defined above
+  const [requestSent, setRequestSent] = useState(initialRequested);
+  const isMobile = useIsMobile();
   const username = user.username || "Anonymous";
   const avatar = user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
   const fanCount = user.followers_count || 0;
 
   const handleFollow = async (e) => {
-    e.stopPropagation(); // Prevent clicking the card/going to profile
-    
-    // 1. Check if user is logged in
-    if (!session) {
-      setAuthModal("login");
-      return;
-    }
+    e.stopPropagation();
+    if (!session) { setAuthModal("login"); return; }
+    if (loading || followed) return;
 
+    const isCancelling = requestSent;
+
+    // --- OPTIMISTIC UI ---
+    setRequestSent(!isCancelling);
     setLoading(true);
+
     try {
-      // 2. Call your actual Supabase API
-      // Assumes followAPI.toggleFollow(followerId, followingId)
-      const isNowFollowing = !followed;
-      await followAPI.toggleFollow(session.user.id, user.id);
-      setFollowed(isNowFollowing);
-      showToast(isNowFollowing ? `Following ${username}` : `Unfollowed ${username}`, "success");
+      if (isCancelling) {
+        // 1. Capture the response from your new API
+        const result = await followAPI.cancelFollowRequest(session.user.id, user.id);
+        showToast("Follow request withdrawn", "info");
+        // 2. Check the custom success flag
+        if (!result.success) {
+          // ROLLBACK: Something went wrong (e.g., they already accepted)
+          setRequestSent(true);
+          showToast(result.message || "Could not cancel request", "error");
+          return; // Exit early
+        }
+
+        showToast("Request cancelled", "success");
+      } else {
+        // For sendFollowRequest, ensure it also follows a similar {success} pattern
+        // or check for error return values
+        await followAPI.sendFollowRequest(session.user.id, user.id);
+        showToast(`Follow request sent to ${username} 📨`, "success");
+      }
     } catch (err) {
+      // This handles network crashes or database being down
       console.error("Follow error:", err);
-      showToast("Could not update follow status", "error");
+      setRequestSent(isCancelling);
+      showToast("Connection error. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -183,142 +308,333 @@ function UserFollowCard({ user }) {
     setTab(`profile:${username}`);
   };
 
+  // ─── Label Logic ──────────────────────────────────────────────────────────
+  let btnLabel = "+ Follow";
+  if (loading) btnLabel = "...";
+  else if (followed) btnLabel = "✓ Following";
+  else if (requestSent) {
+    btnLabel = (!isMobile && hov) ? "✕ Cancel" : "⏳ Requested";
+  }
+
+  const isDestructiveHov = !isMobile && hov && requestSent;
+
+  const btnBg = followed
+    ? C.bg3
+    : requestSent
+      ? (isDestructiveHov ? "rgba(255, 59, 48, 0.15)" : "rgba(255,255,255,0.07)")
+      : `linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`;
+
+  const textColor = isDestructiveHov
+    ? "#ff3b30"
+    : (followed || requestSent ? C.muted : "white");
+
   return (
     <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      onClick={goToProfile}
+      onMouseEnter={() => !isMobile && setHov(true)}
+      onMouseLeave={() => !isMobile && setHov(false)}
+      onClick={() => {
+        setActiveProfile(user);
+        setTab(`profile:${username}`);
+      }}
       style={{
         flexShrink: 0,
-        width: 130,
-        padding: "20px 10px",
-        background: hov ? C.bg3 : C.bg2,
+        width: isMobile ? 140 : 130,
+        padding: "16px 12px",
+        background: hov && !isMobile ? C.bg3 : C.bg2,
         borderRadius: 20,
-        border: `1px solid ${hov ? C.accent + "66" : C.border}`,
+        border: `1px solid ${hov && !isMobile ? C.accent + "66" : C.border}`,
         textAlign: "center",
         cursor: "pointer",
-        transition: "all 0.3s ease",
-        transform: hov ? "translateY(-5px)" : "none",
-        boxShadow: hov ? `0 10px 20px rgba(0,0,0,0.4)` : "none",
+        transition: "transform 0.3s ease, background 0.3s ease",
+        transform: hov && !isMobile ? "translateY(-5px)" : "none",
       }}
     >
-      <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
+      {/* Avatar Section */}
+      <div style={{ position: "relative", marginBottom: 10, display: "inline-block" }}>
         <img
           src={avatar}
           style={{
-            width: 70, height: 70, borderRadius: "50%",
-            border: `2px solid ${followed ? C.green : C.accent}`,
-            padding: 3,
-            transition: "all 0.3s ease",
-            transform: hov ? "scale(1.1)" : "scale(1)",
-            objectFit: "cover"
+            width: 64, height: 64, borderRadius: "50%",
+            border: `2px solid ${followed ? "#4caf50" : C.accent}`,
+            padding: 2, objectFit: "cover"
           }}
         />
-        {user.is_verified && (
-          <div style={{ position: "absolute", bottom: 0, right: 0, background: C.bg, borderRadius: "50%", padding: 2 }}>
-            <VerifiedBadge size={14} />
-          </div>
-        )}
       </div>
 
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {user.display_name || user.username || "unknown"}
-      </div>
-      
-      <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>
-        {fmtNum(fanCount)} fans
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {user.display_name || username}
       </div>
 
       <button
         onClick={handleFollow}
-        disabled={loading}
-        style={{
-          width: "100%",
-          padding: "6px 0",
-          borderRadius: 10,
-          background: followed ? C.bg3 : `linear-gradient(135deg, ${C.accent}, ${C.accent2})`,
-          border: followed ? `1px solid ${C.border}` : "none",
-          color: followed ? C.muted : "white",
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: loading ? "not-allowed" : "pointer",
-          transition: "all 0.2s",
-          opacity: loading ? 0.7 : 1
-        }}
+        onMouseEnter={() => !isMobile && setHov(true)}
+        onMouseLeave={() => !isMobile && setHov(false)}
+        disabled={loading || followed}
+       style={{
+  width: "100%",
+  padding: isMobile ? "8px 0" : "6px 0", // Use padding to control height
+  borderRadius: 12,
+  background: btnBg,
+  border: (followed || requestSent) ? `1px solid ${isDestructiveHov ? '#ff3b30' : C.border}` : "none",
+  color: textColor,
+  
+  // Set the actual size you want instead of scaling
+  fontSize: isMobile ? "14px" : "12px", 
+  fontWeight: 800,
+  
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  whiteSpace: "nowrap",
+  gap: "6px",
+  
+  // Remove these:
+  // transform: ... 
+  // transformOrigin: ...
+  
+  cursor: (loading || followed) ? "not-allowed" : "pointer",
+  transition: "all 0.2s",
+  touchAction: "manipulation",
+  outline: "none",
+}}
       >
-        {loading ? "..." : (followed ? "✓ Following" : "+ Follow")}
+        {btnLabel}
       </button>
     </div>
   );
 }
 
+
 function UserSuggestions() {
   const { setTab, session, authLoading } = useApp();
+
+  const [ready, setReady] = useState(false);
   const [creators, setCreators] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [followingIds, setFollowingIds] = useState(new Set());
+  // 1. ADD THIS STATE
+  const [pendingIds, setPendingIds] = useState(new Set());
 
   useEffect(() => {
-    // 1. If auth is still checking, do absolutely nothing yet
     if (authLoading) return;
+    let cancelled = false;
 
-    const fetchCreators = async () => {
+    const fetch = async () => {
       try {
-        const data = await followAPI.getRandomCreators(20);
-        setCreators(data);
+        const currentUserId = session?.user?.id || null;
+
+        const [allCreators, followingArr, pendingReqsArr] = await Promise.all([
+          followAPI.getRandomCreators(30),
+          currentUserId ? followAPI.getFollowingIds(currentUserId) : Promise.resolve([]),
+          currentUserId
+            ? supabase.from("follow_requests").select("recipient_id").eq("sender_id", currentUserId).eq("status", "pending")
+            : Promise.resolve({ data: [] })
+        ]);
+
+        if (cancelled) return;
+
+        const followingSet = new Set(followingArr);
+        const pendingSet = new Set((pendingReqsArr.data || []).map(r => r.recipient_id));
+
+        const filtered = allCreators
+          .filter(u => u.id !== currentUserId && !followingSet.has(u.id))
+          .slice(0, 20);
+
+        setCreators(filtered);
+        setFollowingIds(followingSet);
+        // 2. SET THE STATE HERE
+        setPendingIds(pendingSet);
       } catch (err) {
         console.error("Error fetching creators:", err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setReady(true);
       }
     };
-    
-    fetchCreators();
-  }, [authLoading]); // Only depend on authLoading to prevent multiple API calls
 
-  // 2. STRICTOR LOADING CHECK: 
-  // Don't even try to process creators until authLoading is false
-  if (authLoading || loading) {
-    return (
-      <div style={{ height: 180, marginBottom: 32 }}>
-        <Skeleton width="100%" height="100%" />
-      </div>
-    );
-  }
+    fetch();
+    return () => { cancelled = true; };
+  }, [authLoading, session?.user?.id]);
 
-  // 3. FILTER IN RENDER: 
-  // This ensures that even if 'creators' state contains 'you', 
-  // it is filtered out visually before the first pixel is drawn.
-  const filteredCreators = creators.filter(user => user.id !== session?.user?.id);
+  if (authLoading || !ready) return <Skeleton width="100%" height={180} />;
+  if (creators.length === 0) return null;
 
-  if (filteredCreators.length === 0) return null;
-//console.log('all',creators,'filteredCreators',filteredCreators)
   return (
     <div style={{ marginBottom: 32 }}>
-      <SectionHeader
-        title="🌟 Suggested Creators"
-        action={() => setTab("channels")}
-        actionLabel="See all"
-      />
-
-      <div style={{
-        display: "flex",
-        gap: 15,
-        overflowX: "auto",
-        scrollbarWidth: "none",
-        padding: "10px 0"
-      }}>
-        {/* 4. Use the filtered list here */}
-        {filteredCreators.map(user => (
-          <UserFollowCard key={user.id} user={user} />
+      <SectionHeader title="🌟 Suggested Creators" action={() => setTab("channels")} actionLabel="See all" />
+      <div style={{ display: "flex", gap: 15, overflowX: "auto", scrollbarWidth: "none", padding: "10px 0" }}>
+        {creators.map(user => (
+          <UserFollowCard
+            key={user.id}
+            user={user}
+            initialFollowed={followingIds.has(user.id)}
+            // 3. PASS THE PROP HERE
+            initialRequested={pendingIds.has(user.id)}
+          />
         ))}
       </div>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FOLLOW REQUEST MANAGER (hook)
+// Subscribes to Supabase realtime on `follow_requests` table for the logged-in
+// user.  When a request arrives → shows toast.  Accept → inserts into
+// `follows`, increments followers_count on both sides, deletes the request.
+// Reject → just deletes the request.
+// ─────────────────────────────────────────────────────────────────────────────
+function useFollowRequests(session, showToast) {
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const isMobile = useIsMobile();
 
+  // On mount: load any already-pending requests for this user
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const loadPending = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("follow_requests")
+          .select(`
+            id,
+            sender_id,
+            created_at,
+            profiles!follow_requests_sender_id_fkey (
+              id, username, display_name, avatar_url
+            )
+          `)
+          .eq("recipient_id", session.user.id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        const shaped = (data || []).map(r => ({
+          id: r.id,
+          sender_id: r.sender_id,
+          sender_username: r.profiles?.username,
+          sender_display_name: r.profiles?.display_name,
+          sender_avatar: r.profiles?.avatar_url,
+        }));
+        setPendingRequests(shaped);
+      } catch (err) {
+        console.error("Failed to load pending follow requests:", err);
+      }
+    };
+
+    loadPending();
+  }, [session?.user?.id]);
+
+  // Realtime subscription — fires when a new row is inserted into follow_requests
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const channel = supabase
+      .channel(`follow_requests:${session.user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "follow_requests",
+          filter: `recipient_id=eq.${session.user.id}`,
+        },
+        async (payload) => {
+          // Fetch sender profile for the toast
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("id, username, display_name, avatar_url")
+              .eq("id", payload.new.sender_id)
+              .single();
+
+            const newReq = {
+              id: payload.new.id,
+              sender_id: payload.new.sender_id,
+              sender_username: profile?.username,
+              sender_display_name: profile?.display_name,
+              sender_avatar: profile?.avatar_url,
+            };
+
+            setPendingRequests(prev => {
+              // Avoid duplicates
+              if (prev.find(r => r.id === newReq.id)) return prev;
+              return [newReq, ...prev];
+            });
+          } catch (err) {
+            console.error("Error fetching sender profile for notification:", err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [session?.user?.id]);
+
+  // Accept: create follow row, increment counters, notify sender, delete request
+  const handleAccept = useCallback(async (req) => {
+    if (!session?.user?.id) return;
+
+    // Optimistic: remove from list immediately
+    setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+
+    try {
+      // 1. Insert into follows table
+      await supabase.from("follows").upsert({
+        follower_id: req.sender_id,
+        following_id: session.user.id,
+        created_at: new Date().toISOString(),
+      }, { onConflict: "follower_id,following_id" });
+
+      // 2. Increment followers_count on recipient (current user)
+      await supabase.rpc("increment_followers", { user_id: session.user.id });
+
+      // 3. Increment following_count on sender
+      await supabase.rpc("increment_following", { user_id: req.sender_id });
+
+      // 4. Notify sender via a notifications table (if it exists)
+      await supabase.from("notifications").insert({
+        recipient_id: req.sender_id,
+        sender_id: session.user.id,
+        type: "follow_accepted",
+        message: "accepted your follow request",
+        read: false,
+        created_at: new Date().toISOString(),
+      }).catch(() => { }); // non-critical
+
+      // 5. Delete the request
+      await supabase.from("follow_requests").delete().eq("id", req.id);
+
+      showToast(`✅ You are now connected with ${req.sender_display_name || req.sender_username}!`, "success");
+    } catch (err) {
+      console.error("Accept follow error:", err);
+      showToast("Failed to accept request", "error");
+      // Restore on failure
+      setPendingRequests(prev => [req, ...prev]);
+    }
+  }, [session?.user?.id, showToast]);
+
+  // Reject: just delete the request row
+  const handleReject = useCallback(async (req) => {
+    setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+    try {
+      await supabase.from("follow_requests").delete().eq("id", req.id);
+      showToast(`Declined request from ${req.sender_display_name || req.sender_username}`, "success");
+    } catch (err) {
+      console.error("Reject follow error:", err);
+      // Restore on failure
+      setPendingRequests(prev => [req, ...prev]);
+    }
+  }, []);
+
+  return { pendingRequests, handleAccept, handleReject, isMobile };
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOME PAGE
+// ─────────────────────────────────────────────────────────────────────────────
 export default function HomePage({ tab }) {
-  const { session, playVideo, setTab } = useApp();
+  const { session, playVideo, setTab, showToast, authLoading } = useApp();
   const isMobile = useIsMobile();
   const [videos, setVideos] = useState([]);
   const [trending, setTrending] = useState([]);
@@ -329,48 +645,28 @@ export default function HomePage({ tab }) {
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 10;
 
+  // ── Follow request system ─────────────────────────────────────────────────
+  const { pendingRequests, handleAccept, handleReject } = useFollowRequests(session, showToast);
 
-  // --- OPTIMIZED AD SYSTEM LOGIC (2 HOUR CAP + DIRECT LINK FIX) ---
+  // ── Pop-under ad (2 hr cap) ───────────────────────────────────────────────
   useEffect(() => {
     const handleGlobalClick = () => {
       const lastAdTime = localStorage.getItem('last_pop_time');
       const now = Date.now();
       const TWO_HOURS = 2 * 60 * 60 * 1000;
-
-      // Only trigger if 2 hours have passed
       if (!lastAdTime || (now - parseInt(lastAdTime)) > TWO_HOURS) {
-
-        /** * FIX: Use a DIRECT Link here. 
-         * Avoid "link lockers" or "smart links" that redirect 5 times.
-         * A direct affiliate/offer link ensures the 'Back' button works.
-         */
         const DIRECT_AD_URL = 'https://your-direct-ad-link.com';
-
-        // 1. Open the direct ad in a new tab
         const adWindow = window.open(DIRECT_AD_URL, '_blank');
-
         if (adWindow) {
-          // 2. Immediate Feedback: Keep the user on LumineX
-          // On mobile, this ensures the browser doesn't "freeze" on a white redirect page
           window.focus();
-
-          // 3. Save timestamp to prevent spamming the user
           localStorage.setItem('last_pop_time', now.toString());
-
-          // 4. Cleanup: Remove listener so subsequent clicks don't open more ads
           window.removeEventListener('click', handleGlobalClick);
-
-          console.log("Direct Ad served. Navigation history preserved.");
         }
       }
     };
-
-    // Attach listener to the window
     window.addEventListener('click', handleGlobalClick);
-
     return () => window.removeEventListener('click', handleGlobalClick);
   }, []);
-
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -378,25 +674,14 @@ export default function HomePage({ tab }) {
 
   useEffect(() => {
     const handleSaveUpdate = (e) => {
-      // 1. Extract the data from the event
       const { videoId, isSaved } = e.detail;
-
-      // 2. Check if we are currently looking at the "saved" tab
-      // Note: Ensure 'tab' is the state variable you use for navigation
       if (tab === "saved" && !isSaved) {
-        // 3. Filter out the video from the local state immediately
         setVideos(prev => prev.filter(v => v.id !== videoId));
       }
     };
-
-    // 4. Set up the listener
     window.addEventListener('video_save_updated', handleSaveUpdate);
-
-    // 5. Clean up
-    return () => {
-      window.removeEventListener('video_save_updated', handleSaveUpdate);
-    };
-  }, [tab]); // Critical: dependency on 'tab' so it knows current view
+    return () => window.removeEventListener('video_save_updated', handleSaveUpdate);
+  }, [tab]);
 
   const loadVideos = useCallback(async (reset = false) => {
     setLoading(true);
@@ -405,35 +690,26 @@ export default function HomePage({ tab }) {
       const nextPage = reset ? 0 : page;
       let data = [];
 
-      // 1. History Tab Logic
       if (tab === "history") {
         if (reset) setPage(0);
-        if (session?.user?.id) {
-          data = await historyAPI.getHistory(session.user.id);
-        }
+        if (session?.user?.id) data = await historyAPI.getHistory(session.user.id);
         setVideos(data);
         setHasMore(false);
         setLoading(false);
         return;
       }
 
-      // 2. Saved Tab Logic
       if (tab === "saved") {
-        if (session?.user?.id) {
-          data = await likeAPI.getSaved(session.user.id);
-        }
+        if (session?.user?.id) data = await likeAPI.getSaved(session.user.id);
         setVideos(data);
         setHasMore(false);
         setLoading(false);
         return;
       }
 
-      // 3. Trending Tab Logic
       if (tab === "trending") {
         data = await videoAPI.getTrending(LIMIT).catch(() => DEMO_VIDEOS.slice(0, LIMIT));
-      }
-      // 4. Default Feed Logic
-      else {
+      } else {
         let followingIds = null;
         if (session?.user?.id && tab === "home") {
           followingIds = await followAPI.getFollowingIds(session.user.id).catch(() => null);
@@ -441,21 +717,17 @@ export default function HomePage({ tab }) {
         data = await videoAPI.getFeed({
           page: nextPage,
           limit: LIMIT,
-          followingIds: followingIds?.length ? followingIds : null
+          followingIds: followingIds?.length ? followingIds : null,
         }).catch(() => DEMO_VIDEOS.slice(nextPage * LIMIT, (nextPage + 1) * LIMIT));
       }
 
       const filtered = (data || []).filter(v => !catFilter || v.category === catFilter);
 
-      if (reset)
-
-        setVideos(filtered);
-
+      if (reset) setVideos(filtered);
       else setVideos(prev => [...prev, ...filtered]);
 
       setHasMore(data?.length === LIMIT);
       if (!reset) setPage(p => p + 1);
-
     } catch (err) {
       console.error("Load error:", err);
     } finally {
@@ -468,7 +740,7 @@ export default function HomePage({ tab }) {
     if (tab === "home") {
       videoAPI.getTrending(8).then(setTrending).catch(() => setTrending(DEMO_VIDEOS.slice(0, 8)));
     }
-  }, [tab, catFilter]);
+  }, [tab, catFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMore = useCallback(() => { if (!loading && hasMore) loadVideos(false); }, [loading, hasMore, loadVideos]);
 
@@ -481,16 +753,10 @@ export default function HomePage({ tab }) {
     return v;
   }, [videos, filter]);
 
-
-
-  // Inside export default function HomePage() { ...
   const handleDeleteHistory = async (e, historyId) => {
     e.stopPropagation();
     const { error } = await historyAPI.deleteHistoryItem(historyId);
-    if (!error) {
-      // We update 'videos' because 'displayed' is a useMemo based on 'videos'
-      setVideos(prev => prev.filter(v => v.historyId !== historyId));
-    }
+    if (!error) setVideos(prev => prev.filter(v => v.historyId !== historyId));
   };
 
   const handleClearAll = async () => {
@@ -502,6 +768,14 @@ export default function HomePage({ tab }) {
 
   return (
     <div>
+      {/* ── Follow Request Notification Toasts ─────────────────────────── */}
+      <FollowRequestToast
+        requests={pendingRequests}
+        onAccept={handleAccept}
+        onReject={handleReject}
+        isMobile={isMobile}
+      />
+
       {tab === "home" && !catFilter && <HeroBanner />}
 
       {catFilter && (
@@ -513,7 +787,6 @@ export default function HomePage({ tab }) {
 
       {tab === "home" && !catFilter && (
         <>
-          {/* ── NEW SECTION ADDED HERE ── */}
           <UserSuggestions />
 
           {trending.length > 0 && (
@@ -543,9 +816,8 @@ export default function HomePage({ tab }) {
       </div>
 
       <div style={{
-        // Adds extra space at the top ONLY on mobile when not on the home tab
         marginTop: isMobile && tab !== "home" ? 20 : 0,
-        padding: isMobile ? "0 4px" : 0
+        padding: isMobile ? "0 4px" : 0,
       }}>
         <SectionHeader
           title={
@@ -554,7 +826,6 @@ export default function HomePage({ tab }) {
                 tab === "saved" ? "❤️ Saved Videos" :
                   catFilter ? `📂 ${catFilter}` : "🎬 All Videos"
           }
-          // Fixed: Ensure action only shows for history and when there's actually content
           action={tab === "history" && videos.length > 0 ? handleClearAll : null}
           actionLabel={tab === "history" && videos.length > 0 ? "Clear All" : null}
         />
@@ -569,7 +840,6 @@ export default function HomePage({ tab }) {
         <>
           {tab === "history" ? (
             <>
-              {/* Show Skeletons if loading and we have no videos yet */}
               {loading && videos.length === 0 ? (
                 <VideoGrid videos={[]} loading={true} />
               ) : (
@@ -580,7 +850,6 @@ export default function HomePage({ tab }) {
                       style={{ position: 'relative', cursor: 'pointer' }}
                       onClick={() => playVideo(video)}
                     >
-                      {/* Delete Button */}
                       <button
                         onClick={(e) => handleDeleteHistory(e, video.historyId)}
                         style={{
@@ -588,7 +857,7 @@ export default function HomePage({ tab }) {
                           background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%',
                           width: 28, height: 28, color: 'white', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '14px', transition: 'transform 0.2s'
+                          fontSize: '14px', transition: 'transform 0.2s',
                         }}
                       >
                         ✕
@@ -597,7 +866,7 @@ export default function HomePage({ tab }) {
                       <div style={{ marginTop: '8px', padding: '0 4px' }}>
                         <div style={{ fontSize: '12px', color: C.text, fontWeight: '600', marginBottom: 4 }}>{video.title}</div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: C.muted }}>
-                          <span> {fmtNum(video.views || 0)} views</span>
+                          <span>{fmtNum(video.views || 0)} views</span>
                           <span>{video.watched_at ? new Date(video.watched_at).toLocaleDateString() : ''}</span>
                         </div>
                       </div>
@@ -607,7 +876,7 @@ export default function HomePage({ tab }) {
               )}
             </>
           ) : (
-            <VideoGrid videos={displayed} loading={loading && videos.length === 0} isMobile={isMobile}/>
+            <VideoGrid videos={displayed} loading={loading && videos.length === 0} isMobile={isMobile} />
           )}
 
           {hasMore && !loading && tab !== "history" && tab !== "saved" && (
