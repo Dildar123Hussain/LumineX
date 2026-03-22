@@ -239,6 +239,7 @@ function AutoPlayCountdown({ seconds, onPlay, onCancel }) {
 // SIDEBAR AD WIDGET  (Smart Refresh replaces this every 30 s)
 // ─────────────────────────────────────────────────────────────────────────────
 function SidebarAdWidget({ ad }) {
+  const isMobile = useIsMobile();
   if (!ad) return null;
   return (
     <div style={{
@@ -308,7 +309,7 @@ function SidebarAdWidget({ ad }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, isMobile, onSkip }) {
   const progress = adTotalDuration > 0 ? adTime / adTotalDuration : 0;
-  const CIRC = 2 * Math.PI * 20; 
+  const CIRC = 2 * Math.PI * 20;
   const strokeDash = CIRC * (1 - progress);
   const isUnskippable = UNSKIPPABLE_DURATIONS.has(adTotalDuration);
 
@@ -423,7 +424,7 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
         justifyContent: "space-between",
         padding: isMobile ? "10px 12px" : "14px 20px",
         borderTop: `1px solid ${adData.accent}22`,
-        position: "relative", 
+        position: "relative",
         zIndex: 2,
         flexWrap: "nowrap", // Stop wrapping which pushes elements off-screen
         gap: 10,
@@ -1245,6 +1246,8 @@ export default function PlayerModal({ video: initVideo, onClose }) {
               </div>
             )}
 
+
+
             {video.tags?.length > 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
                 {video.tags.map(t => (
@@ -1252,6 +1255,8 @@ export default function PlayerModal({ video: initVideo, onClose }) {
                 ))}
               </div>
             )}
+
+            {isMobile && <SidebarAdWidget ad={sidebarAd} />}
 
             {isMobile && (
               <div style={{ marginBottom: 24 }}>
@@ -1264,9 +1269,12 @@ export default function PlayerModal({ video: initVideo, onClose }) {
               </div>
             )}
 
+
             <CommentSection videoId={video.id} videoOwnerId={pf.id} />
           </div>
         </div>
+
+
 
         {/* RIGHT: Related (desktop sticky) */}
         {!isMobile && (
