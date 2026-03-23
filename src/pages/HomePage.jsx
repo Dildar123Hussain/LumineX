@@ -370,33 +370,33 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
         onMouseEnter={() => !isMobile && setHov(true)}
         onMouseLeave={() => !isMobile && setHov(false)}
         disabled={loading || followed}
-       style={{
-  width: "100%",
-  padding: isMobile ? "8px 0" : "6px 0", // Use padding to control height
-  borderRadius: 12,
-  background: btnBg,
-  border: (followed || requestSent) ? `1px solid ${isDestructiveHov ? '#ff3b30' : C.border}` : "none",
-  color: textColor,
-  
-  // Set the actual size you want instead of scaling
-  fontSize: isMobile ? "14px" : "12px", 
-  fontWeight: 800,
-  
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  whiteSpace: "nowrap",
-  gap: "6px",
-  
-  // Remove these:
-  // transform: ... 
-  // transformOrigin: ...
-  
-  cursor: (loading || followed) ? "not-allowed" : "pointer",
-  transition: "all 0.2s",
-  touchAction: "manipulation",
-  outline: "none",
-}}
+        style={{
+          width: "100%",
+          padding: isMobile ? "8px 0" : "6px 0", // Use padding to control height
+          borderRadius: 12,
+          background: btnBg,
+          border: (followed || requestSent) ? `1px solid ${isDestructiveHov ? '#ff3b30' : C.border}` : "none",
+          color: textColor,
+
+          // Set the actual size you want instead of scaling
+          fontSize: isMobile ? "14px" : "12px",
+          fontWeight: 800,
+
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          whiteSpace: "nowrap",
+          gap: "6px",
+
+          // Remove these:
+          // transform: ... 
+          // transformOrigin: ...
+
+          cursor: (loading || followed) ? "not-allowed" : "pointer",
+          transition: "all 0.2s",
+          touchAction: "manipulation",
+          outline: "none",
+        }}
       >
         {btnLabel}
       </button>
@@ -644,6 +644,10 @@ export default function HomePage({ tab }) {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 10;
+  const loaderRef = useRef(null); // Add this near your other state declarations
+
+
+
 
   // ── Follow request system ─────────────────────────────────────────────────
   const { pendingRequests, handleAccept, handleReject } = useFollowRequests(session, showToast);
@@ -684,14 +688,20 @@ export default function HomePage({ tab }) {
   }, [tab]);
 
   const loadVideos = useCallback(async (reset = false) => {
+
+    if ((loading || (!hasMore && !reset)) && !reset) return;
+
     setLoading(true);
-    if (reset) setVideos([]);
+    if (reset) {
+      setPage(0);
+      setHasMore(true);
+    }
     try {
       const nextPage = reset ? 0 : page;
       let data = [];
 
+      // ─── Special Tabs (History/Saved) ───
       if (tab === "history") {
-        if (reset) setPage(0);
         if (session?.user?.id) data = await historyAPI.getHistory(session.user.id);
         setVideos(data);
         setHasMore(false);
@@ -707,42 +717,63 @@ export default function HomePage({ tab }) {
         return;
       }
 
-      if (tab === "trending") {
-        data = await videoAPI.getTrending(LIMIT).catch(() => DEMO_VIDEOS.slice(0, LIMIT));
-      } else {
-        let followingIds = null;
-        if (session?.user?.id && tab === "home") {
-          followingIds = await followAPI.getFollowingIds(session.user.id).catch(() => null);
-        }
-        data = await videoAPI.getFeed({
-          page: nextPage,
-          limit: LIMIT,
-          followingIds: followingIds?.length ? followingIds : null,
-        }).catch(() => DEMO_VIDEOS.slice(nextPage * LIMIT, (nextPage + 1) * LIMIT));
-      }
 
+      // For "trending" specifically, we pass null for user ID to get global trends
+      const userIdForFeed = tab === "home" ? (session?.user?.id || null) : null;
+
+      data = await videoAPI.getSmartFeed(userIdForFeed, nextPage, LIMIT);
+
+      // Apply category filter if one is selected
       const filtered = (data || []).filter(v => !catFilter || v.category === catFilter);
 
-      if (reset) setVideos(filtered);
-      else setVideos(prev => [...prev, ...filtered]);
+      if (reset) {
+        setVideos(filtered);
+        setPage(1); // Reset page to 1 for the next load
+      } else {
+        setVideos(prev => [...prev, ...filtered]);
+        setPage(p => p + 1);
+      }
 
+      // If we got fewer than LIMIT, there is no more data
       setHasMore(data?.length === LIMIT);
-      if (!reset) setPage(p => p + 1);
     } catch (err) {
-      console.error("Load error:", err);
+      console.error("Smart Feed Load error:", err);
+      // Fallback to demo data if RPC fails
+      if (reset) setVideos(DEMO_VIDEOS.slice(0, LIMIT));
     } finally {
       setLoading(false);
     }
-  }, [tab, page, session, catFilter]);
+  }, [tab, page, session, catFilter, loading,hasMore,showToast]);
+
 
   useEffect(() => {
-    setPage(0); setHasMore(true); loadVideos(true);
-    if (tab === "home") {
-      videoAPI.getTrending(8).then(setTrending).catch(() => setTrending(DEMO_VIDEOS.slice(0, 8)));
-    }
-  }, [tab, catFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // If the loader comes into view AND we aren't already loading AND there's more data
+        if (entries[0].isIntersecting && hasMore && !loading && tab !== "history" && tab !== "saved") {
+          loadVideos(false);
+        }
+      },
+      { threshold: 0.1 } // Trigger when 10% of the loader is visible
+    );
 
-  const loadMore = useCallback(() => { if (!loading && hasMore) loadVideos(false); }, [loading, hasMore, loadVideos]);
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [loadVideos, hasMore, loading, tab]);
+
+
+useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    loadVideos(true);
+    
+    // Pre-fetch small trending list for the horizontal scroller on Home
+    if (tab === "home") {
+      videoAPI.getTrending(18).then(setTrending).catch(() => setTrending([]));
+    }
+  }, [tab, catFilter]);
 
   const displayed = useMemo(() => {
     let v = [...videos];
@@ -879,19 +910,38 @@ export default function HomePage({ tab }) {
             <VideoGrid videos={displayed} loading={loading && videos.length === 0} isMobile={isMobile} />
           )}
 
-          {hasMore && !loading && tab !== "history" && tab !== "saved" && (
-            <div style={{ display: "flex", justifyContent: "center", padding: "28px 16px" }}>
-              <button onClick={loadMore} style={{ padding: "12px 32px", borderRadius: 999, background: C.accent, color: "white", border: "none", fontWeight: 700, cursor: "pointer" }}>
-                Load More Videos
-              </button>
-            </div>
-          )}
-
-          {loading && videos.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "center", padding: 20 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent, animation: `pulse 1.2s ${i * .2}s infinite` }} />)}
-              </div>
+          {/* Replace the old loadMore button section with this */}
+          {tab !== "history" && tab !== "saved" && (
+            <div
+              ref={loaderRef}
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                padding: "40px 0",
+                minHeight: "100px"
+              }}
+            >
+              {loading && (
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[0, 1, 2].map(i => (
+                    <div
+                      key={i}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: C.accent,
+                        animation: `pulse 1.2s ${i * .2}s infinite`
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+              {!hasMore && videos.length > 0 && (
+                <p style={{ color: C.muted, fontSize: 13, fontWeight: 600 }}>
+                  ✨ You've caught up with everything!
+                </p>
+              )}
             </div>
           )}
         </>
