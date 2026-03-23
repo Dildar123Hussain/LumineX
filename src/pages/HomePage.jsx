@@ -673,8 +673,12 @@ export default function HomePage({ tab }) {
   }, []);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [tab, catFilter, filter]);
+    // Only scroll to top if the TAB changed, not the Category
+    if (tab) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [tab, filter]); // Remove catFilter from this dependency array
+
 
   useEffect(() => {
     const handleSaveUpdate = (e) => {
@@ -688,11 +692,11 @@ export default function HomePage({ tab }) {
   }, [tab]);
 
   const loadVideos = useCallback(async (reset = false) => {
-
     if ((loading || (!hasMore && !reset)) && !reset) return;
 
     setLoading(true);
     if (reset) {
+      setVideos([]);
       setPage(0);
       setHasMore(true);
     }
@@ -717,20 +721,22 @@ export default function HomePage({ tab }) {
         return;
       }
 
-
       // For "trending" specifically, we pass null for user ID to get global trends
       const userIdForFeed = tab === "home" ? (session?.user?.id || null) : null;
 
-      data = await videoAPI.getSmartFeed(userIdForFeed, nextPage, LIMIT);
+      // 1. Pass catFilter directly to the API as the 4th argument
+      data = await videoAPI.getSmartFeed(userIdForFeed, nextPage, LIMIT, catFilter);
 
-      // Apply category filter if one is selected
-      const filtered = (data || []).filter(v => !catFilter || v.category === catFilter);
+      // 2. We REMOVED the old "const filtered = ..." line because 
+      // the 'data' variable is now already filtered by the database.
 
       if (reset) {
-        setVideos(filtered);
-        setPage(1); // Reset page to 1 for the next load
+        // 3. Use 'data' directly instead of 'filtered'
+        setVideos(data || []);
+        setPage(1);
       } else {
-        setVideos(prev => [...prev, ...filtered]);
+        // 4. Use 'data' directly instead of 'filtered'
+        setVideos(prev => [...prev, ...(data || [])]);
         setPage(p => p + 1);
       }
 
@@ -738,13 +744,11 @@ export default function HomePage({ tab }) {
       setHasMore(data?.length === LIMIT);
     } catch (err) {
       console.error("Smart Feed Load error:", err);
-      // Fallback to demo data if RPC fails
       if (reset) setVideos(DEMO_VIDEOS.slice(0, LIMIT));
     } finally {
       setLoading(false);
     }
-  }, [tab, page, session, catFilter, loading,hasMore,showToast]);
-
+  }, [tab, page, session, catFilter, loading, hasMore, showToast]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -765,10 +769,10 @@ export default function HomePage({ tab }) {
   }, [loadVideos, hasMore, loading, tab]);
 
 
-useEffect(() => {
+  useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
     loadVideos(true);
-    
+
     // Pre-fetch small trending list for the horizontal scroller on Home
     if (tab === "home") {
       videoAPI.getTrending(18).then(setTrending).catch(() => setTrending([]));
@@ -870,77 +874,76 @@ useEffect(() => {
       ) : (
         <>
           {tab === "history" ? (
-            <>
-              {loading && videos.length === 0 ? (
-                <VideoGrid videos={[]} loading={true} />
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: isMobile ? '10px' : '20px' }}>
-                  {displayed.map((video) => (
-                    <div
-                      key={video.historyId || video.id}
-                      style={{ position: 'relative', cursor: 'pointer' }}
-                      onClick={() => playVideo(video)}
+            /* History Branch */
+            loading && videos.length === 0 ? (
+              <VideoGrid videos={[]} loading={true} isMobile={isMobile} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: isMobile ? '10px' : '20px' }}>
+                {displayed.map((video) => (
+                  <div
+                    key={video.historyId || video.id}
+                    style={{ position: 'relative', cursor: 'pointer' }}
+                    onClick={() => playVideo(video)}
+                  >
+                    <button
+                      onClick={(e) => handleDeleteHistory(e, video.historyId)}
+                      style={{
+                        position: 'absolute', top: 8, left: 8, zIndex: 10,
+                        background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%',
+                        width: 28, height: 28, color: 'white', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '14px', transition: 'transform 0.2s',
+                      }}
                     >
-                      <button
-                        onClick={(e) => handleDeleteHistory(e, video.historyId)}
-                        style={{
-                          position: 'absolute', top: 8, left: 8, zIndex: 10,
-                          background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%',
-                          width: 28, height: 28, color: 'white', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '14px', transition: 'transform 0.2s',
-                        }}
-                      >
-                        ✕
-                      </button>
-                      <VideoCard video={video} />
-                      <div style={{ marginTop: '8px', padding: '0 4px' }}>
-                        <div style={{ fontSize: '12px', color: C.text, fontWeight: '600', marginBottom: 4 }}>{video.title}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: C.muted }}>
-                          <span>{fmtNum(video.views || 0)} views</span>
-                          <span>{video.watched_at ? new Date(video.watched_at).toLocaleDateString() : ''}</span>
-                        </div>
+                      ✕
+                    </button>
+                    <VideoCard video={video} />
+                    <div style={{ marginTop: '8px', padding: '0 4px' }}>
+                      <div style={{ fontSize: '12px', color: C.text, fontWeight: '600', marginBottom: 4 }}>{video.title}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: C.muted }}>
+                        <span>{fmtNum(video.views || 0)} views</span>
+                        <span>{video.watched_at ? new Date(video.watched_at).toLocaleDateString() : ''}</span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </>
+                  </div>
+                ))}
+              </div>
+            )
           ) : (
-            <VideoGrid videos={displayed} loading={loading && videos.length === 0} isMobile={isMobile} />
-          )}
-
-          {/* Replace the old loadMore button section with this */}
-          {tab !== "history" && tab !== "saved" && (
-            <div
-              ref={loaderRef}
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                padding: "40px 0",
-                minHeight: "100px"
-              }}
-            >
-              {loading && (
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[0, 1, 2].map(i => (
+            /* Home / Trending Branch */
+            <>
+              {loading && videos.length === 0 && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+                  {[0, 1, 2, 3].map(i => (
                     <div
                       key={i}
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        background: C.accent,
+                        width: 80,
+                        height: 32,
+                        borderRadius: "16px",
+                        background: C.accent + "22",
                         animation: `pulse 1.2s ${i * .2}s infinite`
                       }}
                     />
                   ))}
                 </div>
               )}
+              <VideoGrid videos={displayed} loading={loading && videos.length === 0} isMobile={isMobile} />
+            </>
+          )}
+
+          {/* Infinite Scroll Loader */}
+          {tab !== "history" && tab !== "saved" && (
+            <div ref={loaderRef} style={{ display: "flex", justifyContent: "center", padding: "40px 0", minHeight: "100px" }}>
+              {loading && videos.length > 0 && (
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent, animation: `pulse 1.2s ${i * .2}s infinite` }} />
+                  ))}
+                </div>
+              )}
               {!hasMore && videos.length > 0 && (
-                <p style={{ color: C.muted, fontSize: 13, fontWeight: 600 }}>
-                  ✨ You've caught up with everything!
-                </p>
+                <p style={{ color: C.muted, fontSize: 13, fontWeight: 600 }}>✨ You've caught up with everything!</p>
               )}
             </div>
           )}
