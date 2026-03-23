@@ -474,6 +474,18 @@ export const followAPI = {
 
 // ── Video API ────────────────────────────────────────────────────────────────
 export const videoAPI = {
+
+  async getSmartFeed(userId = null, page = 0, limit = 12) {
+    const { data, error } = await supabase.rpc('get_smart_feed', {
+      p_user_id: userId,
+      p_page: page,
+      p_limit: limit
+    });
+
+    if (error) throw error;
+    return data || [];
+  },
+
   async getFeed({ page = 0, limit = 12, category = null, userId = null, followingIds = null } = {}) {
     let q = supabase.from("videos")
       .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count)")
