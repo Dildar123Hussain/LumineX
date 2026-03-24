@@ -643,7 +643,7 @@ export default function HomePage({ tab }) {
       // 3. UPDATE STATE
       if (reset) {
         setVideos(data);
-        setPage(1); // Next page will be 1
+        setPage(nextPage + 1); // Next page will be 1
       } else {
         setVideos(prev => [...prev, ...data]);
         setPage(p => p + 1);
@@ -732,72 +732,45 @@ export default function HomePage({ tab }) {
         </>
       )}
 
-      {/* Categories section — always DB-driven */}
-      {tab === "home" && !catFilter && (
-        <div style={{ marginBottom: 10 }}>
-          <SectionHeader title="🏷 Browse Categories" action={() => { }} actionLabel="" />
-          {isMobile
-            ? <MobileCategoryStrip categories={categories} loading={categoriesLoading} selectedCat={catFilter} onSelect={cat => setCatFilter(cat === catFilter ? null : cat)} />
-            : categoriesLoading
-              ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 10 }}>{Array(8).fill(0).map((_, i) => <SkeletonCategoryCard key={i} />)}</div>
-              : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 10 }}>
-                {categories.slice(0, 12).map(name => (
-                  <CategoryCard key={name} name={name} onClick={() => setCatFilter(name === catFilter ? null : name)} />
-                ))}
-              </div>
-          }
-        </div>
-      )}
+{tab === "home" && !catFilter && (
+  <div style={{ marginBottom: 20 }}>
+    {/* Added the action and actionLabel props to the SectionHeader */}
+    <SectionHeader 
+      title="🏷 Browse Categories" 
+      action={() => setTab("categories")} 
+      actionLabel="See all" 
+    />
+    
+    <div style={{ 
+      display: "grid", 
+      gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", 
+      gap: 10 
+    }}>
+ 
 
-      {/* Category chips row — "All" and first item removed */}
-      {categories.length > 0 && (
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", marginBottom: 8, paddingBottom: 4 }}>
+      {/* OTHER DB CATEGORIES */}
+      {categories.slice(0, 11).map(name => (
+        <CategoryCard 
+          key={name} 
+          name={name} 
+          onClick={() => setCatFilter(name)} 
+        />
+      ))}
+    </div>
+  </div>
+)}
 
-          {/* 1. Re-added the "All" chip here */}
-          <div
-            onClick={() => setCatFilter(null)} // Setting to null shows all videos
-            style={{
-              flexShrink: 0, padding: "6px 14px", borderRadius: 20, cursor: "pointer",
-              background: !catFilter ? C.accent + "33" : C.bg3,
-              color: !catFilter ? C.accent : C.muted,
-              border: `1px solid ${!catFilter ? C.accent : C.border}`,
-              fontSize: 12, fontWeight: !catFilter ? 700 : 500,
-              display: "flex", alignItems: "center", gap: 5,
-              transition: "all .2s", whiteSpace: "nowrap",
-            }}
-          >
-            <span>🎬</span>
-            <span>All</span>
-          </div>
 
-          {/* 2. Your existing map (ensure .slice(1) is removed if you want the first DB item back) */}
-          {(categoriesLoading ? [] : categories).map(name => {
-            const active = catFilter === name;
-            const color = catColor(name);
-            return (
-              <div key={name} onClick={() => setCatFilter(active ? null : name)} style={{
-                flexShrink: 0, padding: "6px 14px", borderRadius: 20, cursor: "pointer",
-                background: active ? color + "33" : C.bg3,
-                color: active ? color : C.muted,
-                border: `1px solid ${active ? color : C.border}`,
-                fontSize: 12, fontWeight: active ? 700 : 500,
-                display: "flex", alignItems: "center", gap: 5,
-                transition: "all .2s", whiteSpace: "nowrap",
-              }}>
-                <span>{catIcon(name)}</span>
-                <span style={{ textTransform: "capitalize" }}>{name}</span>
-              </div>
-            );
-          })}
 
-          {categoriesLoading && Array(6).fill(0).map((_, i) => <SkeletonCategoryChip key={i} />)}
-        </div>
-      )}
-
-      {/* Content filter chips (All / Hot / New / VIP / Free) */}
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", marginBottom: 20, marginTop: isMobile ? -10 : 0 }}>
+      {/* CONTENT FILTERS (Hot, New, VIP, Free) */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         {CONTENT_FILTERS.map(f => (
-          <FilterChip key={f.value} label={f.label} active={filter === f.value} onClick={() => setFilter(f.value)} />
+          <FilterChip 
+            key={f.value} 
+            label={f.label} 
+            active={filter === f.value} 
+            onClick={() => setFilter(f.value)} 
+          />
         ))}
       </div>
 
