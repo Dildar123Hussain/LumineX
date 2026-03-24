@@ -8,6 +8,9 @@ import { videoAPI, followAPI, likeAPI, historyAPI, supabase } from "../lib/supab
 import { useIsMobile } from "../hooks/index";
 import VideoCard from "../components/VideoCard";
 
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AD UNITS (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,125 +269,150 @@ function FollowRequestToast({ requests, onAccept, onReject, isMobile }) {
 function UserFollowCard({ user, initialFollowed = false, initialRequested = false }) {
   const { session, setTab, setActiveProfile, setAuthModal, showToast } = useApp();
 
-  // Use state for UI updates
   const [followed, setFollowed] = useState(initialFollowed);
   const [requested, setRequested] = useState(initialRequested);
   const [loading, setLoading] = useState(false);
   const [hov, setHov] = useState(false);
   const isMobile = useIsMobile();
-  const username = user.username || "Anonymous";
+
+  const username = user.username || "anonymous";
   const avatar = user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
+  const displayName = user.display_name || username;
+  
+  // Generate a distinct theme color based on username for the banner
+  const coverColor = `hsl(${(username.length * 55) % 360}, 60%, 25%)`;
 
   const handleFollow = async (e) => {
-    // CRITICAL: Prevent event bubbling immediately
     e.preventDefault();
     e.stopPropagation();
 
     if (!session) return setAuthModal("login");
     if (loading || followed) return;
 
-    // --- STEP 1: PURE OPTIMISTIC UPDATE ---
-    // We toggle the requested state BEFORE any other logic
-    const willBeRequested = !requested;
-    setRequested(willBeRequested);
-
-    // We don't wait for 'setLoading' to render to start the API call
+    // OPTIMISTIC UPDATE
+    const wasRequested = requested;
+    setRequested(!wasRequested);
     setLoading(true);
 
     try {
-      if (!willBeRequested) {
-        // Was requested, now canceling
+      if (wasRequested) {
         const res = await followAPI.cancelFollowRequest(session.user.id, user.id);
-        if (res && res.success === false) {
-          setRequested(true);
-          showToast(res.message || "Failed to cancel", "error");
-        }
+        if (res && res.success === false) setRequested(true);
       } else {
-        // Was not requested, now sending
         await followAPI.sendFollowRequest(session.user.id, user.id);
       }
     } catch (err) {
-      // REVERT ONLY ON ERROR
-      setRequested(!willBeRequested);
+      setRequested(wasRequested);
       showToast("Connection error", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  // Pre-calculate styles to avoid "jank" during render
-  const btnLabel = followed
-    ? "✓ Following"
-    : requested
-      ? "⏳ Requested"
-      : loading
-        ? "..."
-        : "+ Follow";
-
-  const btnBg = followed ? C.bg3 : requested ? "rgba(255,255,255,.1)" : `linear-gradient(135deg,${C.accent},${C.accent2 || C.accent})`;
-
   return (
     <div
-      onMouseEnter={() => !isMobile && setHov(true)} // Disable hov state on mobile
+      onMouseEnter={() => !isMobile && setHov(true)}
       onMouseLeave={() => !isMobile && setHov(false)}
       onClick={() => { setActiveProfile(user); setTab(`profile:${username}`); }}
       style={{
-        flexShrink: 0, width: 130, padding: "20px 10px",
-        background: (!isMobile && hov) ? C.bg3 : C.bg2, // Conditional background
+        flexShrink: 0, 
+        width: 140, // Slightly wider for the new design
+        background: C.bg2,
         borderRadius: 20,
-        border: `1px solid ${(!isMobile && hov) ? C.accent + "66" : C.border}`, // Conditional border
-        textAlign: "center", cursor: "pointer",
-        transition: "transform 0.2s ease, background 0.2s ease",
-        // Remove translateY and scale on mobile
-        transform: (!isMobile && hov) ? "translateY(-5px)" : "none",
-        // Remove shadow on mobile
-        boxShadow: (!isMobile && hov) ? "0 10px 20px rgba(0,0,0,.4)" : "none",
+        border: `1px solid ${hov ? C.accent + "88" : C.border}`,
+        textAlign: "center",
+        cursor: "pointer",
+        transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        transform: hov ? "translateY(-6px)" : "none",
+        boxShadow: hov ? `0 12px 24px rgba(0,0,0,0.5)` : "none",
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column"
       }}
     >
-      <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
-        <img
-          src={avatar}
-          alt={username}
+      {/* 1. Mini Banner Area */}
+      <div style={{ 
+        height: 40, 
+        background: `linear-gradient(45deg, ${coverColor}, ${C.bg3})`, 
+        position: "relative" 
+      }}>
+        <div style={{ 
+          position: "absolute", inset: 0, 
+          background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)", 
+          animation: "glass-shine 3s infinite" 
+        }} />
+      </div>
+
+      <div style={{ padding: "0 10px 14px", marginTop: -25, flex: 1 }}>
+        {/* 2. Avatar Area */}
+        <div style={{ position: "relative", display: "inline-block", marginBottom: 8 }}>
+          <img
+            src={avatar}
+            alt={username}
+            style={{
+              width: 56, height: 56, borderRadius: "50%",
+              background: C.bg2,
+              border: `3px solid ${followed ? "#4caf50" : C.bg2}`,
+              padding: 2, 
+              transition: "all 0.3s",
+              objectFit: "cover",
+              boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
+            }}
+          />
+          {user.is_verified && (
+            <div style={{ 
+              position: "absolute", bottom: 2, right: 0, 
+              background: C.bg, borderRadius: "50%", padding: 1 
+            }}>
+              <VerifiedBadge size={14} />
+            </div>
+          )}
+        </div>
+
+        {/* 3. User Info */}
+        <div style={{ 
+          fontSize: 12, fontWeight: 800, color: C.text, 
+          marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" 
+        }}>
+          {displayName}
+        </div>
+        
+        <div style={{ 
+          fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 8 
+        }}>
+          @{username.toLowerCase()}
+        </div>
+
+        {/* 4. Only Follower Count Stat */}
+        <div style={{ 
+          fontSize: 11, fontWeight: 700, color: C.accent, 
+          background: "rgba(255,255,255,0.03)", 
+          padding: "4px 0", borderRadius: 8, marginBottom: 10,
+          border: `1px solid ${C.border}`
+        }}>
+          {fmtNum(user.followers_count || 0)} <span style={{ fontSize: 9, opacity: 0.7 }}>fans</span>
+        </div>
+
+        {/* 5. Follow Button */}
+        <button
+          onClick={handleFollow}
+          disabled={loading || followed}
           style={{
-            width: 70, height: 70, borderRadius: "50%",
-            border: `2px solid ${followed ? "#4caf50" : C.accent}`,
-            padding: 3, transition: "all 0.3s",
-            // Remove avatar zoom on mobile
-            transform: (!isMobile && hov) ? "scale(1.1)" : "scale(1)",
-            objectFit: "cover"
+            width: "100%", padding: "7px 0", borderRadius: 10, 
+            background: followed ? C.bg3 : requested ? "rgba(255,255,255,0.08)" : `linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`,
+            border: (followed || requested) ? `1px solid ${C.border}` : "none",
+            color: (followed || requested) ? C.text : "white",
+            fontSize: 10, fontWeight: 800,
+            cursor: (loading || followed) ? "not-allowed" : "pointer",
+            transition: "all 0.2s ease",
+            opacity: loading ? 0.7 : 1,
+            fontFamily: "inherit"
           }}
-        />
-        {user.is_verified && (
-          <div style={{ position: "absolute", bottom: 0, right: 0, background: C.bg, borderRadius: "50%", padding: 2 }}>
-            <VerifiedBadge size={14} />
-          </div>
-        )}
+        >
+          {loading ? "..." : followed ? "✓ Following" : requested ? "✕ Cancel" : "+ Follow"}
+        </button>
       </div>
-
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {user.display_name || username}
-      </div>
-
-      <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>
-        {fmtNum(user.followers_count || 0)} fans
-      </div>
-
-      <button
-        onClick={handleFollow}
-        disabled={loading || followed}
-        style={{
-          width: "100%", padding: "6px 0", borderRadius: 10, background: btnBg,
-          border: (followed || requested) ? `1px solid ${C.border}` : "none",
-          color: (followed || requested) ? C.muted : "white",
-          fontSize: 11, fontWeight: 700,
-          cursor: (loading || followed) ? "not-allowed" : "pointer",
-          transition: "background 0.1s ease",
-          opacity: loading ? 0.7 : 1,
-          fontFamily: "inherit"
-        }}
-      >
-        {btnLabel}
-      </button>
     </div>
   );
 }
