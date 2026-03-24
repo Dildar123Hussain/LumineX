@@ -4,7 +4,7 @@ import { useApp } from "../context/AppContext";
 import { useIsMobile, useVideoLike } from "../hooks/index";
 import { likeAPI } from "../lib/supabase";
 
-export default function VideoCard({ video, cardWidth, compact, showViews, showChannel = true }) {
+export default function VideoCard({ video, cardWidth, compact, showViews, showChannel = true, isOwner }) {
   const { setTab, playVideo, setActiveProfile } = useApp();
   const isMobile = useIsMobile();
   const vRef = useRef(null);
@@ -21,6 +21,47 @@ export default function VideoCard({ video, cardWidth, compact, showViews, showCh
 
 
   const { liked, count: likeCount, toggle: toggleLike } = useVideoLike(video.id, false, video.likes_count);
+
+  // 1. Add these new states at the top of your component
+  const [showMenu, setShowMenu] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    if (!session?.user?.id) {
+      return showToast("Please login to perform this action", "error");
+    }
+
+    // Ensure the person deleting is the actual owner (Security check)
+    if (video.user_id !== session.user.id) {
+      return showToast("Unauthorized: You do not own this video", "error");
+    }
+    // Prevent multiple clicks
+    if (isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      // Actual API Call
+      await videoAPI.delete(video.id);
+      // Success feedback
+      showToast("Video deleted permanently", "success");
+      // UI Update: Broadcast to ProfilePage to remove the card from the grid
+      window.dispatchEvent(new CustomEvent('video_deleted', {
+        detail: { videoId: video.id }
+      }));
+
+      // Close menus
+      setShowMenu(false);
+      setConfirmDelete(false);
+    } catch (err) {
+      console.error("Delete error:", err);
+      showToast(err.message || "Failed to delete video", "error");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   // Inside VideoCard.jsx
   const { session, showToast } = useApp();
@@ -139,6 +180,9 @@ export default function VideoCard({ video, cardWidth, compact, showViews, showCh
         boxShadow: hov ? `0 20px 50px rgba(0,0,0,.5),0 0 40px var(--accent)12` : `0 2px 12px rgba(0,0,0,.2)`,
         width: cardWidth || "100%", flexShrink: cardWidth ? 0 : undefined,
         scrollSnapAlign: cardWidth ? "start" : undefined, position: "relative",
+        /* ADD THIS LINE TO FIX BLINKING */
+        WebkitTapHighlightColor: "transparent",
+        touchAction: "manipulation"
       }}>
 
       {/* Media */}
@@ -183,33 +227,123 @@ export default function VideoCard({ video, cardWidth, compact, showViews, showCh
 
         <div style={{ position: "absolute", bottom: 8, right: 8, zIndex: 5, background: "rgba(0,0,0,.85)", color: "white", fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>{video.duration || ""}</div>
 
+        {/* Inside VideoCard.jsx - Top Right Button Section */}
         {!compact && (
-          <button
-            onClick={e => { e.stopPropagation(); handleSaveToggle(e) }}
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              zIndex: 15,
-              background: "rgba(0,0,0,0.7)",
-              border: "none",
-              borderRadius: "50%",
-              width: 30,
-              height: 30,
-              cursor: "pointer",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: hov || saved ? 1 : 0,
-              transition: "opacity .2s, transform .2s",
-              transform: saved ? "scale(1.2)" : "scale(1)",
-              color: saved ? C.accent : "white"
-            }}
-          >
-            {saved ? "🔖" : "📑"}
-          </button>
-        )}
+          <div style={{ position: "absolute", top: 8, right: 8, zIndex: 15 }}>
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (isOwner) {
+                  setShowMenu(!showMenu);
+                  setConfirmDelete(false);
+                } else {
+                  handleSaveToggle(e);
+                }
+              }}
+              style={{
+                background: "rgba(0,0,0,0.7)",
+                border: "none",
+                borderRadius: "50%",
+                width: 30,
+                height: 30,
+                cursor: "pointer",
+                fontSize: 14,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: hov || saved || isOwner ? 1 : 0,
+                transition: "opacity .2s, transform .2s",
+                color: (isOwner ? "white" : (saved ? C.accent : "white"))
+              }}
+            >
+              {isOwner ? (
+                <span style={{ fontSize: 20, fontWeight: '900' }}>⋮</span>
+              ) : (
+                saved ? "🔖" : "📑"
+              )}
+            </button>
+
+            {isOwner && showMenu && (
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: 35,
+                  right: 0,
+                  background: "#1a1a1a",
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 8,
+                  padding: 8,
+                  minWidth: 120,
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  zIndex: 20
+                }}
+              >
+                {!confirmDelete ? (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    style={{ background: "none", border: "none", color: "#ff4d4d", padding: "2px", cursor: "pointer", textAlign: "left", fontWeight: 600, fontSize: 13 }}
+                  >
+                    🗑️ Delete
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 4 }}>
+                    <span style={{ fontSize: 11, color: "#aaa", textAlign: "center" }}>Confirm Delete?</span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                        style={{
+                          flex: 1, background: isDeleting ? "#444" : "#ff4d4d", border: "none", color: "white", padding: "4px 8px", borderRadius: 4, cursor: isDeleting ? "not-allowed" : "pointer", fontSize: 11, fontWeight: 700, display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 5
+                        }}
+                      >
+                        {isDeleting ? (
+                          <>
+                            {/* Simple inline CSS loader */}
+                            <div style={{
+                              width: 12, height: 12, border: "2px solid rgba(255,255,255,0.3)",
+                              borderTopColor: "#fff", borderRadius: "50%",
+                              animation: "spin 0.8s linear infinite"
+                            }} />
+                            Deleting...
+                          </>
+                        ) : (
+                          "Sure."
+                        )}
+                      </button>
+                      <button
+                        onClick={() => !isDeleting && setConfirmDelete(false)}
+                        disabled={isDeleting}
+                        style={{
+                          flex: 1,
+                          background: "#333",
+                          border: "none",
+                          color: "#ccc",
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          cursor: isDeleting ? "not-allowed" : "pointer",
+                          fontSize: 11
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <style>{`
+  @keyframes spin { to { transform: rotate(360deg); } }
+`}</style>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )} {/* This closing parenthesis and brace were missing */}
 
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "rgba(255,255,255,.1)", zIndex: 6, opacity: active ? 1 : 0 }}>
           <div style={{ height: "100%", background: `linear-gradient(90deg,${C.accent},${C.accent2})`, width: `${prog}%`, transition: "width .12s linear" }} />
