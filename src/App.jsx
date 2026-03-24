@@ -21,11 +21,13 @@ import Footer from "./components/layout/Footer";
 import { useLocation } from "react-router-dom";
 
 function AppInner() {
-  const { tab, player, setPlayer, toast, theme } = useApp();
+  const { tab, player, setTab, setPlayer, toast, theme, prevTab } = useApp();
   const isMobile = useIsMobile();
   const [splash, setSplash] = useState(() => !sessionStorage.getItem("lx_splash"));
   const [ageOk, setAgeOk] = useState(() => !!localStorage.getItem("lx_age"));
   const [showTop, setShowTop] = useState(false);
+  const [catFilter, setCatFilter] = useState(null);
+  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -59,6 +61,8 @@ function AppInner() {
 
   const mainTabs = ["home", "trending", "new", "saved", "history", "categories", "channels", "vip"];
 
+  const isViewingProfile = typeof tab === 'string' && tab.startsWith("profile:");
+
   return (
     <div style={{
       background: "var(--bg)", color: "var(--text)", fontFamily: "'DM Sans',sans-serif",
@@ -73,15 +77,27 @@ function AppInner() {
             key={activeUserId} // Forces refresh when switching users
             userId={activeUserId}
             passedData={profileData}
+            onClose={() => setTab(prevTab)}
           />
         ) : (
           /* 2. ALL OTHER TABS */
           <>
-            {catMatch && <HomePage tab="home" />}
+            {catMatch && <HomePage tab="home" catFilter={catFilter || catMatch}
+              setCatFilter={setCatFilter} />}
             {!catMatch && (
               <>
-                {["home", "trending", "new", "saved", "history"].includes(tab) && <HomePage tab={tab} />}
-                {tab === "categories" && <CategoriesPage />}
+                {["home", "trending", "new", "saved", "history"].includes(tab) && <HomePage tab={tab}
+                  catFilter={catFilter}
+                  setCatFilter={setCatFilter}
+                  filter={filter}
+                  setFilter={setFilter} />}
+                {tab === 'categories' && (
+                  <CategoriesPage
+                    setTab={setTab}
+                    setCatFilter={setCatFilter}
+                    setFilter={setFilter}
+                  />
+                )}
                 {tab === "channels" && <ChannelsPage />}
                 {tab === "vip" && <VIPPage />}
               </>
@@ -91,7 +107,15 @@ function AppInner() {
       </main>
 
       {/* All Modals */}
-      {player && <PlayerModal video={player} onClose={() => setPlayer(null)} />}
+      {/* All Modals */}
+      {player && (
+        <div style={{ display: isViewingProfile ? 'none' : 'block' }}>
+          <PlayerModal
+            video={player}
+            onClose={() => setPlayer(null)}
+          />
+        </div>
+      )}
       <AuthModal />
       <SearchModal />
       <VipModal />
