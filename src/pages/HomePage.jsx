@@ -84,7 +84,7 @@ function SkeletonCategoryCard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORY CARD (desktop grid)
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryCard({ name, onClick }) {
+export function CategoryCard({ name, onClick }) {
   const [hov, setHov] = useState(false);
   const color = catColor(name);
   return (
@@ -531,7 +531,7 @@ const CONTENT_FILTERS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-export default function HomePage({ tab }) {
+export default function HomePage({ tab, catFilter, setCatFilter, filter, setFilter }) {
   const { session, playVideo, setTab, showToast, authLoading } = useApp();
   const isMobile = useIsMobile();
 
@@ -540,8 +540,8 @@ export default function HomePage({ tab }) {
   const [trending, setTrending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [filter, setFilter] = useState("all");
-  const [catFilter, setCatFilter] = useState(null);
+  //const [filter, setFilter] = useState("all");
+  //const [catFilter, setCatFilter] = useState(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 12;
@@ -711,7 +711,7 @@ export default function HomePage({ tab }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, padding: "12px 16px", background: C.bg3, borderRadius: 12, border: `1px solid ${C.border}` }}>
           <span style={{ fontSize: 20 }}>{catIcon(catFilter)}</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: C.text, textTransform: "capitalize" }}>{catFilter}</span>
-          <button onClick={() => setCatFilter(null)} style={{ marginLeft: "auto", background: C.accent, border: "none", borderRadius: 999, color: "white", padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Clear ✕</button>
+          <button onClick={() => {setCatFilter(null);setFilter("all");}}  style={{ marginLeft: "auto", background: C.accent, border: "none", borderRadius: 999, color: "white", padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Clear ✕</button>
         </div>
       )}
 
