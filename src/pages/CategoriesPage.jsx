@@ -1,47 +1,60 @@
-import { useState } from "react";
-import { C, SectionHeader } from "../components/ui/index";
-import { useApp } from "../context/AppContext";
-import { useIsMobile } from "../hooks/index";
-import { CATEGORIES } from "../data/theme";
+import React, { useState, useEffect } from "react";
+import { videoAPI } from "../lib/supabase";
+import { C, SectionHeader, Skeleton } from "../components/ui/index";
+// Reuse your existing CategoryCard component logic
+import { CategoryCard } from "./HomePage"; 
 
-export default function CategoriesPage() {
-  const { setTab } = useApp();
-  const isMobile = useIsMobile();
-  return (
-    <div style={{
-      display: "block",
-      width: "100%",
-      overflow: "visible",
-      minHeight: "600px",
-      clear: "both"
-    }}>
-      <SectionHeader title="🏷 All Categories" />
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3,1fr)" : "repeat(auto-fill,minmax(140px,1fr))", gap: isMobile ? 8 : 12 }}>
-        {CATEGORIES.map(cat => <CatCard key={cat.name} cat={cat} onClick={() => setTab(`cat:${cat.name}`)} isMobile={isMobile} />)}
-      </div>
-    </div>
-  );
-}
+export default function CategoriesPage({ setCatFilter, setTab ,setFilter}) {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-function CatCard({ cat, onClick, isMobile }) {
-  const [hov, setHov] = useState(false);
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        // This calls the unique categories from your DB
+        const data = await videoAPI.getCategories();
+        setCategories(data);
+      } catch (err) {
+        console.error("Failed to fetch categories:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+const handleCategoryClick = (name) => {
+    if (setFilter) setFilter("all"); // Reset content filter to 'All'
+    setCatFilter(name);             // Set the chosen category
+    setTab("home");                 // Redirect to home
+  };
+
   return (
-    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{
-        background: hov ? cat.color + "18" : C.card, border: `1.5px solid ${hov ? cat.color + "88" : C.border}`,
-        borderRadius: 16, padding: isMobile ? "14px 8px" : "22px 14px", textAlign: "center", cursor: "pointer",
-        transition: "all .3s cubic-bezier(0.34,1.2,0.64,1)",
-        transform: hov ? "translateY(-5px) scale(1.03)" : "none",
-        boxShadow: hov ? `0 14px 30px rgba(0,0,0,.5),0 0 25px ${cat.color}22` : "0 2px 8px rgba(0,0,0,.2)",
-        position: "relative", overflow: "hidden",
+    <div style={{ padding: "20px 0" }}>
+      <SectionHeader title="Explore Categories" />
+      
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", 
+        gap: 16,
+        marginTop: 20 
       }}>
-      {hov && !isMobile && (
-        <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 40%,${cat.color}15 0%,transparent 70%)`, pointerEvents: "none" }} />
-      )}
-      <div style={{ fontSize: isMobile ? 26 : 34, marginBottom: 8, transition: "transform .3s", transform: hov ? "scale(1.18) rotate(-4deg)" : "scale(1)", display: "inline-block", position: "relative", zIndex: 1 }}>{cat.icon}</div>
-      <div style={{ fontSize: isMobile ? 11 : 13, fontWeight: 700, color: hov ? cat.color : C.text, marginBottom: 3, transition: "color .3s", position: "relative", zIndex: 1 }}>{cat.name}</div>
-      <div style={{ fontSize: 9, color: C.muted, position: "relative", zIndex: 1 }}>{cat.count}</div>
-      {!isMobile && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: `translateX(-50%) scaleX(${hov ? 1 : 0})`, width: "80%", height: 2, background: `linear-gradient(90deg,${cat.color},${cat.color}88)`, transition: "transform .3s ease", borderRadius: "99px 99px 0 0" }} />}
+        {loading ? (
+          // Show skeletons while loading
+          Array(12).fill(0).map((_, i) => (
+            <div key={i} style={{ height: 120, background: C.bg3, borderRadius: 16, animate: 'pulse 1.5s infinite' }} />
+          ))
+        ) : (
+          categories.map((cat) => (
+            <CategoryCard 
+              key={cat} 
+              name={cat} 
+              onClick={() => handleCategoryClick(cat)} 
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
