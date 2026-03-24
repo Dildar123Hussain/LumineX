@@ -1,14 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { AVATARS } from '../data/theme';
+
 const URL = process.env.REACT_APP_SUPABASE_URL || "https://your-project.supabase.co";
 const ANON = process.env.REACT_APP_SUPABASE_ANON || "your-anon-key";
-
 
 export const supabase = createClient(URL, ANON, {
   auth: { persistSession: true, autoRefreshToken: true },
   realtime: { params: { eventsPerSecond: 10 } },
 });
-
 
 // ── In-memory cache ────────────────────────────────────────────────────────
 const CACHE = new Map();
@@ -22,37 +21,22 @@ export const cache = {
   clear: () => CACHE.clear(),
 };
 
-// ── Auth API ────────────────────────────────────────────────────────────────
+// ── Auth API ───────────────────────────────────────────────────────────────
 export const authAPI = {
-
   async signUp({ email, password, username, displayName, avatarId }) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Invalid email address");
-
     const taken = await profileAPI.checkUsername(username);
     if (taken) throw new Error("Username is already taken");
-
     const selectedAvatar = AVATARS.find(av => av.id === avatarId);
     const avatarEmoji = selectedAvatar?.emoji || "🦋";
     const avatarBg = selectedAvatar?.bg || "linear-gradient(135deg,#c084fc,#818cf8)";
-
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          username: username.toLowerCase().trim(),
-          display_name: displayName,
-          avatar_emoji: avatarEmoji,
-          avatar_bg: avatarBg,
-          avatar_id: avatarId,
-        }
-      }
+      email, password,
+      options: { data: { username: username.toLowerCase().trim(), display_name: displayName, avatar_emoji: avatarEmoji, avatar_bg: avatarBg, avatar_id: avatarId } }
     });
-
     if (error) throw error;
     return data;
   },
-
 
   async signIn({ email, password }) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Invalid email address");
@@ -63,8 +47,7 @@ export const authAPI = {
 
   async signInWithGoogle() {
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
+      provider: "google", options: { redirectTo: window.location.origin },
     });
     if (error) throw error;
     return data;
@@ -74,9 +57,7 @@ export const authAPI = {
 
   async resetPassword(email) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Invalid email address");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + "/reset-password",
-    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + "/reset-password" });
     if (error) throw error;
   },
 
@@ -88,7 +69,7 @@ export const authAPI = {
   getSession: async () => (await supabase.auth.getSession()).data.session,
 };
 
-// ── Profile API ─────────────────────────────────────────────────────────────
+// ── Profile API ────────────────────────────────────────────────────────────
 export const profileAPI = {
   async getById(id) {
     const cached = cache.get(`profile:${id}`);
@@ -138,11 +119,21 @@ export const profileAPI = {
     if (error) throw error;
     return data || [];
   },
+
+  // ── NEW: Paginated list of all profiles for Channels page ───────────────
+  async getPaginated({ page = 0, limit = 20 } = {}) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count,following_count,bio")
+      .order("followers_count", { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
+    if (error) throw error;
+    return data || [];
+  },
 };
 
-// ── Follow API ──────────────────────────────────────────────────────────────
+// ── Follow API ─────────────────────────────────────────────────────────────
 export const followAPI = {
-
   async isFollowing(followerId, followingId) {
     if (!followerId) return false;
     const k = `follow:${followerId}:${followingId}`;
@@ -152,13 +143,15 @@ export const followAPI = {
     return cache.set(k, !!data, TTL.short);
   },
 
+  // Returns random creators — shuffled server-side via random() to avoid
+  // always returning the same first N rows
   async getRandomCreators(limit = 26) {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
-      .limit(30);
+      .select('id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count,following_count')
+      .limit(60); // fetch more, shuffle client-side for variety
     if (error) throw error;
-    return data.sort(() => 0.5 - Math.random()).slice(0, limit);
+    return (data || []).sort(() => 0.5 - Math.random()).slice(0, limit);
   },
 
   async follow(followerId, followingId) {
@@ -167,7 +160,7 @@ export const followAPI = {
     cache.bust(`follow:${followerId}`);
     cache.bust(`profile:${followerId}`);
     cache.bust(`profile:${followingId}`);
-    await notifAPI.create({ userId: followingId, actorId: followerId, type: "follow" }).catch(() => { });
+    await notifAPI.create({ userId: followingId, actorId: followerId, type: "follow" }).catch(() => {});
   },
 
   async unfollow(followerId, followingId) {
@@ -202,57 +195,29 @@ export const followAPI = {
     return cache.set(k, (data || []).map(d => d.following_id), TTL.short);
   },
 
-  // In your followAPI library
+  // Cancel a pending follow request (sender cancels their own request)
   cancelFollowRequest: async (senderId, recipientId) => {
-
-    //console.log("Types:", typeof senderId, typeof recipientId);
-    //console.log("Values:", `|${senderId}|`, `|${recipientId}|`); // Pipe symbols show hidden spaces
     try {
-      // 1. Basic Validation
-      if (!senderId || !recipientId) {
-        throw new Error("Missing sender or recipient ID");
-      }
+      if (!senderId || !recipientId) throw new Error("Missing sender or recipient ID");
       if (senderId === recipientId) throw new Error("Cannot follow yourself");
-      // 2. Perform the deletion with multiple safety constraints
-      const { data, error, count } = await supabase
+      const { error, count } = await supabase
         .from("follow_requests")
-        .delete({ count: 'exact' }) // Returns how many rows were actually deleted
-        .match({
-          sender_id: senderId,
-          recipient_id: recipientId,
-          status: 'pending' // Ensures we don't delete an 'accepted' history record
-        });
-
-      console.log('da', data, 'err,', count)
-
+        .delete({ count: 'exact' })
+        .match({ sender_id: senderId, recipient_id: recipientId, status: 'pending' });
       if (error) throw error;
-
-
-      // 3. Logic Check: If count is 0, the request might have been 
-      // handled by the recipient while the sender was looking at the screen.
-      if (count === 0) {
-        return {
-          success: false,
-          message: "Request no longer exists (it may have been accepted or declined already)."
-        };
-      }
-      return { success: true, data };
+      if (count === 0) return { success: false, message: "Request no longer exists." };
+      return { success: true };
     } catch (err) {
-      console.error("Critical error in cancelFollowRequest:", err.message);
+      console.error("cancelFollowRequest error:", err.message);
       return { success: false, error: err.message };
     }
   },
 
-  // ── NEW: Send a follow request ───────────────────────────────────────────
-  // Inserts a row into follow_requests with status="pending".
-  // The recipient gets a realtime INSERT event via subscribeToFollowRequests().
-  // If a rejected request already exists, it is re-opened (status → pending).
-  // If a pending request already exists, it is a no-op (returns alreadyPending).
+  // Send a follow request — inserts pending row, notifies recipient via realtime
   async sendFollowRequest(senderId, recipientId) {
     if (!senderId || !recipientId) throw new Error("Missing sender or recipient");
     if (senderId === recipientId) throw new Error("Cannot follow yourself");
 
-    // Check for an existing row (pending OR rejected)
     const { data: existing } = await supabase
       .from("follow_requests")
       .select("id, status")
@@ -262,7 +227,6 @@ export const followAPI = {
 
     if (existing) {
       if (existing.status === "pending") return { alreadyPending: true };
-      // Re-open a previously rejected request
       if (existing.status === "rejected") {
         const { error } = await supabase
           .from("follow_requests")
@@ -273,233 +237,177 @@ export const followAPI = {
       }
     }
 
-    // Fresh insert
     const { data, error } = await supabase
       .from("follow_requests")
-      .insert({
-        sender_id: senderId,
-        recipient_id: recipientId,
-        status: "pending",
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
+      .insert({ sender_id: senderId, recipient_id: recipientId, status: "pending", created_at: new Date().toISOString() })
+      .select().single();
     if (error) throw error;
 
-    // Create a notification so the recipient also sees it in their notif bell
-    await notifAPI.create({
-      userId: recipientId,
-      actorId: senderId,
-      type: "follow_request",
-    }).catch(() => { });
-
+    await notifAPI.create({ userId: recipientId, actorId: senderId, type: "follow_request" }).catch(() => {});
     return data;
   },
 
-  // ── NEW: Accept a follow request ─────────────────────────────────────────
-  // 1. Inserts into follows
-  // 2. Increments followers_count on recipient  (via RPC, with manual fallback)
-  // 3. Increments following_count on sender     (via RPC, with manual fallback)
-  // 4. Notifies sender that their request was accepted
-  // 5. Marks request status = "accepted"
+  // Accept a follow request — creates follow, increments counters, notifies sender
   async acceptFollowRequest(requestId, senderId, recipientId) {
     if (!requestId || !senderId || !recipientId) throw new Error("Missing required fields for accept");
 
-    // 1. Insert follow relationship (upsert prevents duplicate key error)
     const { error: followError } = await supabase
       .from("follows")
-      .upsert(
-        { follower_id: senderId, following_id: recipientId },
-        { onConflict: "follower_id,following_id" }
-      );
+      .upsert({ follower_id: senderId, following_id: recipientId }, { onConflict: "follower_id,following_id" });
     if (followError) throw followError;
 
-    // 2. Increment recipients followers_count
-    const { error: rpc1Err } = await supabase
-      .rpc("increment_followers_count", { target_user_id: recipientId });
+    // Increment followers_count on recipient
+    const { error: rpc1Err } = await supabase.rpc("increment_followers_count", { target_user_id: recipientId });
     if (rpc1Err) {
-      // Manual fallback — works even without the RPC
-      console.warn("RPC increment_followers_count unavailable, using fallback");
-      const { data: rp } = await supabase
-        .from("profiles").select("followers_count").eq("id", recipientId).single();
-      if (rp) {
-        await supabase.from("profiles")
-          .update({ followers_count: (rp.followers_count || 0) + 1 })
-          .eq("id", recipientId);
-      }
+      const { data: rp } = await supabase.from("profiles").select("followers_count").eq("id", recipientId).single();
+      if (rp) await supabase.from("profiles").update({ followers_count: (rp.followers_count || 0) + 1 }).eq("id", recipientId);
     }
 
-    // 3. Increment senders following_count
-    const { error: rpc2Err } = await supabase
-      .rpc("increment_following_count", { target_user_id: senderId });
+    // Increment following_count on sender
+    const { error: rpc2Err } = await supabase.rpc("increment_following_count", { target_user_id: senderId });
     if (rpc2Err) {
-      // Manual fallback
-      console.warn("RPC increment_following_count unavailable, using fallback");
-      const { data: sp } = await supabase
-        .from("profiles").select("following_count").eq("id", senderId).single();
-      if (sp) {
-        await supabase.from("profiles")
-          .update({ following_count: (sp.following_count || 0) + 1 })
-          .eq("id", senderId);
-      }
+      const { data: sp } = await supabase.from("profiles").select("following_count").eq("id", senderId).single();
+      if (sp) await supabase.from("profiles").update({ following_count: (sp.following_count || 0) + 1 }).eq("id", senderId);
     }
 
-    // 4. Notify the sender — "X accepted your follow request"
-    await notifAPI.create({
-      userId: senderId,
-      actorId: recipientId,
-      type: "follow_accepted",
-    }).catch(() => { });
+    await notifAPI.create({ userId: senderId, actorId: recipientId, type: "follow_accepted" }).catch(() => {});
+    await supabase.from("follow_requests").update({ status: "accepted" }).eq("id", requestId);
 
-    // 5. Mark request as accepted (keeps an audit trail)
-    await supabase
-      .from("follow_requests")
-      .update({ status: "accepted" })
-      .eq("id", requestId);
-
-    // Bust relevant caches
     cache.bust(`follow:${senderId}`);
     cache.bust(`followingIds:${senderId}`);
     cache.bust(`profile:${recipientId}`);
     cache.bust(`profile:${senderId}`);
   },
 
-  // ── NEW: Reject a follow request ─────────────────────────────────────────
-  // Marks status = "rejected". Sender can re-request later (sendFollowRequest
-  // will detect the rejected row and flip it back to pending).
+  // Reject a follow request — marks rejected so sender can re-request later
   async rejectFollowRequest(requestId) {
     if (!requestId) throw new Error("Missing requestId");
-    const { error } = await supabase
-      .from("follow_requests")
-      .update({ status: "rejected" })
-      .eq("id", requestId);
+    const { error } = await supabase.from("follow_requests").update({ status: "rejected" }).eq("id", requestId);
     if (error) throw error;
   },
 
-  // ── NEW: Load all pending requests for a user (called on page load) ──────
-  // Returns shaped objects the FollowRequestToast component expects.
+  // Load all pending requests for a user on page load
   async getPendingRequests(recipientId) {
     if (!recipientId) return [];
     const { data, error } = await supabase
       .from("follow_requests")
-      .select(`
-        id,
-        sender_id,
-        created_at,
-        sender:profiles!follow_requests_sender_id_fkey (
-          id, username, display_name, avatar_url, avatar_emoji, avatar_bg
-        )
-      `)
+      .select(`id, sender_id, created_at, sender:profiles!follow_requests_sender_id_fkey(id,username,display_name,avatar_url,avatar_emoji,avatar_bg)`)
       .eq("recipient_id", recipientId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("getPendingRequests error:", error.message);
-      return [];
-    }
-
+    if (error) { console.error("getPendingRequests error:", error.message); return []; }
     return (data || []).map(r => ({
-      id: r.id,
-      sender_id: r.sender_id,
+      id: r.id, sender_id: r.sender_id,
       sender_username: r.sender?.username || "",
       sender_display_name: r.sender?.display_name || r.sender?.username || "Someone",
-      sender_avatar: r.sender?.avatar_url
-        || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.sender?.username}`,
+      sender_avatar: r.sender?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.sender?.username}`,
     }));
   },
 
-  // ── NEW: Check if a follow request is already pending/accepted/rejected ──
-  // Used by UserFollowCard on mount to restore correct button state
-  // ("+ Follow" vs "⏳ Requested" vs "✓ Following").
+  // Check request status for a sender→recipient pair
   async getRequestStatus(senderId, recipientId) {
     if (!senderId || !recipientId) return null;
-    const { data } = await supabase
-      .from("follow_requests")
-      .select("id, status")
-      .eq("sender_id", senderId)
-      .eq("recipient_id", recipientId)
-      .maybeSingle();
-    return data?.status || null; // "pending" | "accepted" | "rejected" | null
+    const { data } = await supabase.from("follow_requests").select("id, status").eq("sender_id", senderId).eq("recipient_id", recipientId).maybeSingle();
+    return data?.status || null;
   },
 
-  // ── NEW: Realtime subscription for incoming follow requests ──────────────
-  // Call from a useEffect. Returns the channel — caller must clean up:
-  //
-  //   useEffect(() => {
-  //     const ch = followAPI.subscribeToFollowRequests(userId, (req) => {
-  //       setPendingRequests(prev => [req, ...prev]);
-  //     });
-  //     return () => supabase.removeChannel(ch);
-  //   }, [userId]);
-  //
+  // Realtime subscription — fires when a new follow_request INSERT hits the DB
   subscribeToFollowRequests(recipientId, onNewRequest) {
     const channel = supabase
       .channel(`follow_requests:recipient:${recipientId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "follow_requests",
-          filter: `recipient_id=eq.${recipientId}`,
-        },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "follow_requests", filter: `recipient_id=eq.${recipientId}` },
         async (payload) => {
           try {
-            const { data: sender } = await supabase
-              .from("profiles")
-              .select("id, username, display_name, avatar_url, avatar_emoji")
-              .eq("id", payload.new.sender_id)
-              .single();
-
+            const { data: sender } = await supabase.from("profiles")
+              .select("id,username,display_name,avatar_url,avatar_emoji").eq("id", payload.new.sender_id).single();
             onNewRequest({
-              id: payload.new.id,
-              sender_id: payload.new.sender_id,
+              id: payload.new.id, sender_id: payload.new.sender_id,
               sender_username: sender?.username || "",
               sender_display_name: sender?.display_name || sender?.username || "Someone",
-              sender_avatar: sender?.avatar_url
-                || `https://api.dicebear.com/7.x/avataaars/svg?seed=${sender?.username}`,
+              sender_avatar: sender?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${sender?.username}`,
             });
-          } catch (err) {
-            console.error("subscribeToFollowRequests error:", err);
-          }
+          } catch (err) { console.error("subscribeToFollowRequests error:", err); }
         }
-      )
-      .subscribe();
-
+      ).subscribe();
     return channel;
   },
 };
 
-// ── Video API ────────────────────────────────────────────────────────────────
+// ── Video API ──────────────────────────────────────────────────────────────
 export const videoAPI = {
 
-  async getSmartFeed(userId = null, page = 0, limit = 12) {
-    const { data, error } = await supabase.rpc('get_smart_feed', {
+  async getCategories() {
+    const { data } = await supabase.rpc('get_unique_categories');
+    return data?.map(r => r.category) || [];
+  },
+
+  async getUniversalFeed(userId, page, limit, category, filter) {
+    const { data, error } = await supabase.rpc('get_universal_feed', {
       p_user_id: userId,
       p_page: page,
-      p_limit: limit
+      p_limit: limit,
+      p_category: category,
+      p_filter: filter
     });
 
     if (error) throw error;
-    return data || [];
+    if (!data?.length) return [];
+
+    // Fetch creators for these videos
+    const uids = [...new Set(data.map(v => v.user_id))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url, is_verified")
+      .in("id", uids);
+
+    const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
+    return data.map(v => ({ ...v, profiles: profileMap[v.user_id] }));
   },
 
+  // Smart feed using the DB function — handles following priority + category filter
+  // For guests (userId=null): returns top videos by engagement
+  // For logged-in users: returns followed-user videos first, then global
+  async getSmartFeed(userId = null, page = 0, limit = 12, category = null) {
+    const { data, error } = await supabase.rpc('get_smart_feed', {
+      p_user_id: userId,
+      p_page: page,
+      p_limit: limit,
+      p_category: category,
+    });
+    if (error) throw error;
+    // Attach profiles to each video in a second pass if not joined in RPC
+    // (The RPC returns videos rows; profiles join may need a separate query)
+    if (!data?.length) return [];
+    const videoIds = data.map(v => v.user_id).filter(Boolean);
+    if (!videoIds.length) return data;
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count")
+      .in("id", [...new Set(videoIds)]);
+    const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]));
+    return data.map(v => ({ ...v, profiles: profileMap[v.user_id] || null }));
+  },
+
+  // Standard paginated feed (fallback when smart feed RPC unavailable)
   async getFeed({ page = 0, limit = 12, category = null, userId = null, followingIds = null } = {}) {
     let q = supabase.from("videos")
       .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count)")
       .order("created_at", { ascending: false })
       .range(page * limit, (page + 1) * limit - 1);
-    if (category) q = q.eq("category", category);
+
+    // Support both old `category` text column and new `categories` array column
+    if (category) q = q.contains("categories", [category]);
     if (userId) q = q.eq("user_id", userId);
+
     if (followingIds?.length) {
       q = supabase.from("videos")
         .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified,followers_count)")
         .in("user_id", followingIds)
         .order("created_at", { ascending: false })
         .range(page * limit, (page + 1) * limit - 1);
+      if (category) q = q.contains("categories", [category]);
     }
+
     const { data, error } = await q;
     if (error) throw error;
     return data || [];
@@ -508,9 +416,36 @@ export const videoAPI = {
   async getTrending(limit = 12) {
     const { data, error } = await supabase.from("videos")
       .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg,is_verified)")
-      .order("views", { ascending: false }).limit(limit);
+      .order("views", { ascending: false })
+      .order("likes_count", { ascending: false })
+      .limit(limit);
     if (error) throw error;
     return data || [];
+  },
+
+  // ── NEW: Fetch all unique categories from the videos table ───────────────
+  // Unnests the `categories` array column → returns deduplicated list
+  // Falls back to the old `category` text column if array is empty
+  async getCategories() {
+    const cacheKey = "video:categories";
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
+    // Try the new categories array column first
+    const { data, error } = await supabase.rpc("get_unique_categories");
+    if (!error && data?.length) {
+      return cache.set(cacheKey, data.map(r => r.category).filter(Boolean).sort(), TTL.long);
+    }
+
+    // Fallback: query the old text column
+    const { data: fallback } = await supabase
+      .from("videos")
+      .select("category")
+      .not("category", "is", null)
+      .limit(500);
+
+    const unique = [...new Set((fallback || []).map(r => r.category).filter(Boolean))].sort();
+    return cache.set(cacheKey, unique, TTL.long);
   },
 
   async search(q) {
@@ -523,10 +458,9 @@ export const videoAPI = {
   },
 
   async getViewCount(videoId) {
-    const { data, error } = await supabase
-      .from("videos").select("views_count").eq("id", videoId).single();
+    const { data, error } = await supabase.from("videos").select("views").eq("id", videoId).single();
     if (error) throw error;
-    return data?.views_count ?? null;
+    return data?.views ?? null;
   },
 
   async incrementViews(id) {
@@ -549,13 +483,18 @@ export const videoAPI = {
       const { data: { publicUrl } } = supabase.storage.from("thumbnails").getPublicUrl(tp);
       thumbUrl = publicUrl;
     }
+    // Store category in both old column and new array for compatibility
     const { data, error } = await supabase.from("videos").insert({
       user_id: userId, video_url: videoUrl, thumbnail_url: thumbUrl,
-      title, description, category, tags, is_vip: isVip, duration,
+      title, description,
+      category,                                    // legacy text column
+      categories: category ? [category] : [],      // new array column
+      tags, is_vip: isVip, duration,
     }).select("*, profiles(id,username,display_name,avatar_url)").single();
     if (error) throw error;
     cache.bust("feed:");
-    await notifAPI.notifyFollowers(userId, "video", data.id).catch(() => { });
+    cache.del("video:categories"); // bust category cache when new video uploaded
+    await notifAPI.notifyFollowers(userId, "video", data.id).catch(() => {});
     return data;
   },
 
@@ -567,7 +506,7 @@ export const videoAPI = {
   },
 };
 
-// ── Like API ─────────────────────────────────────────────────────────────────
+// ── Like API ───────────────────────────────────────────────────────────────
 export const likeAPI = {
   async isLiked(userId, videoId) {
     if (!userId) return false;
@@ -584,7 +523,7 @@ export const likeAPI = {
     } else {
       await supabase.from("video_likes").insert({ user_id: userId, video_id: videoId });
       if (videoOwnerId && videoOwnerId !== userId) {
-        await notifAPI.create({ userId: videoOwnerId, actorId: userId, type: "like", videoId }).catch(() => { });
+        await notifAPI.create({ userId: videoOwnerId, actorId: userId, type: "like", videoId }).catch(() => {});
       }
     }
     cache.del(`like:${userId}:${videoId}`);
@@ -624,12 +563,12 @@ export const likeAPI = {
   },
 };
 
-// ── Comment API ──────────────────────────────────────────────────────────────
+// ── Comment API ────────────────────────────────────────────────────────────
 export const commentAPI = {
   async getForVideo(videoId) {
     const { data, error } = await supabase
       .from("comments")
-      .select(`*, profiles:user_id (id, username, display_name, avatar_url, avatar_emoji, avatar_bg)`)
+      .select(`*, profiles:user_id(id,username,display_name,avatar_url,avatar_emoji,avatar_bg)`)
       .eq("video_id", videoId)
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -641,9 +580,9 @@ export const commentAPI = {
       .insert({ video_id: videoId, user_id: userId, body, parent_id: parentId, reply_to_user })
       .select("*, profiles(id,username,display_name,avatar_url,avatar_emoji,avatar_bg)")
       .single();
-    if (error) { console.error('Supabase Insert Error:', error); throw error; }
+    if (error) { console.error('Comment insert error:', error); throw error; }
     if (videoOwnerId && videoOwnerId !== userId && !parentId) {
-      await notifAPI.create({ userId: videoOwnerId, actorId: userId, type: "comment", videoId, commentId: data.id }).catch(() => { });
+      await notifAPI.create({ userId: videoOwnerId, actorId: userId, type: "comment", videoId, commentId: data.id }).catch(() => {});
     }
     return data;
   },
@@ -671,7 +610,7 @@ export const commentAPI = {
   },
 };
 
-// ── Notification API ─────────────────────────────────────────────────────────
+// ── Notification API ───────────────────────────────────────────────────────
 export const notifAPI = {
   async getForUser(userId) {
     const { data, error } = await supabase.from("notifications")
@@ -687,8 +626,7 @@ export const notifAPI = {
     if (userId === actorId) return;
     await supabase.from("notifications").insert({
       user_id: userId, actor_id: actorId, type,
-      video_id: videoId || null,
-      comment_id: commentId || null,
+      video_id: videoId || null, comment_id: commentId || null,
     });
   },
 
@@ -719,7 +657,7 @@ export const notifAPI = {
   },
 };
 
-// ── VIP API ──────────────────────────────────────────────────────────────────
+// ── VIP API ────────────────────────────────────────────────────────────────
 export const vipAPI = {
   async upgrade(userId) {
     const { data, error } = await supabase.from("profiles").update({ is_vip: true }).eq("id", userId).select().single();
@@ -729,24 +667,19 @@ export const vipAPI = {
   },
 };
 
-// ── History API ─────────────────────────────────────────────────────────────
+// ── History API ────────────────────────────────────────────────────────────
 export const historyAPI = {
   async addToHistory(userId, videoId) {
     if (!userId || !videoId) return;
-    const { error } = await supabase
-      .from("watch_history")
-      .upsert(
-        { user_id: userId, video_id: videoId, watched_at: new Date().toISOString() },
-        { onConflict: 'user_id, video_id' }
-      );
+    const { error } = await supabase.from("watch_history")
+      .upsert({ user_id: userId, video_id: videoId, watched_at: new Date().toISOString() }, { onConflict: 'user_id, video_id' });
     if (error) console.error("Error updating history:", error.message);
   },
 
   async getHistory(userId) {
     if (!userId) return [];
-    const { data, error } = await supabase
-      .from("watch_history")
-      .select(`id, watched_at, video:video_id (id, title, thumbnail_url, video_url, views, category, duration)`)
+    const { data, error } = await supabase.from("watch_history")
+      .select(`id, watched_at, video:video_id(id,title,thumbnail_url,video_url,views,views,category,categories,duration)`)
       .eq("user_id", userId)
       .order("watched_at", { ascending: false });
     if (error) return [];
@@ -761,3 +694,47 @@ export const historyAPI = {
     return await supabase.from("watch_history").delete().eq("user_id", userId);
   },
 };
+
+// =============================================================================
+// SQL TO RUN IN SUPABASE SQL EDITOR
+// =============================================================================
+//
+// -- RPC: get_unique_categories (used by videoAPI.getCategories)
+// CREATE OR REPLACE FUNCTION get_unique_categories()
+// RETURNS TABLE(category text) AS $$
+//   SELECT DISTINCT unnest(categories) AS category
+//   FROM public.videos
+//   WHERE categories IS NOT NULL AND array_length(categories, 1) > 0
+//   ORDER BY category;
+// $$ LANGUAGE sql STABLE SECURITY DEFINER;
+//
+// -- RPC: increment_followers_count
+// CREATE OR REPLACE FUNCTION increment_followers_count(target_user_id uuid)
+// RETURNS void AS $$
+//   UPDATE public.profiles SET followers_count = COALESCE(followers_count,0)+1 WHERE id=target_user_id;
+// $$ LANGUAGE sql SECURITY DEFINER;
+//
+// -- RPC: increment_following_count
+// CREATE OR REPLACE FUNCTION increment_following_count(target_user_id uuid)
+// RETURNS void AS $$
+//   UPDATE public.profiles SET following_count = COALESCE(following_count,0)+1 WHERE id=target_user_id;
+// $$ LANGUAGE sql SECURITY DEFINER;
+//
+// -- Add following_count if missing
+// ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS following_count integer NOT NULL DEFAULT 0;
+//
+// -- follow_requests table (if not already created)
+// CREATE TABLE IF NOT EXISTS public.follow_requests (
+//   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+//   sender_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+//   recipient_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+//   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
+//   created_at timestamptz NOT NULL DEFAULT now(),
+//   UNIQUE (sender_id, recipient_id)
+// );
+// ALTER TABLE public.follow_requests ENABLE ROW LEVEL SECURITY;
+// CREATE POLICY "sender can insert" ON public.follow_requests FOR INSERT WITH CHECK (auth.uid()=sender_id);
+// CREATE POLICY "parties can read" ON public.follow_requests FOR SELECT USING (auth.uid()=recipient_id OR auth.uid()=sender_id);
+// CREATE POLICY "parties can update" ON public.follow_requests FOR UPDATE USING (auth.uid()=recipient_id OR auth.uid()=sender_id);
+// ALTER PUBLICATION supabase_realtime ADD TABLE public.follow_requests;
+// =============================================================================
