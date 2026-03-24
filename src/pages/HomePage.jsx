@@ -95,12 +95,14 @@ export function CategoryCard({ name, onClick }) {
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       onClick={onClick}
       style={{
-        background: hov ? color + "18" : C.card,
-        border: `1.5px solid ${hov ? color + "88" : C.border}`,
+        background: hov ? `${color}40` : `${color}25`,
+        border: `1px solid ${hov ? color : `${color}60`}`,
         borderRadius: 16, padding: "18px 14px", textAlign: "center", cursor: "pointer",
         transition: "all .3s cubic-bezier(0.34,1.2,0.64,1)",
         transform: hov ? "translateY(-6px) scale(1.04)" : "none",
-        boxShadow: hov ? `0 16px 40px rgba(0,0,0,.5),0 0 30px ${color}22` : `0 2px 8px rgba(0,0,0,.2)`,
+        boxShadow: hov 
+          ? `0 10px 30px -10px ${color}, 0 0 15px ${color}30` 
+          : "0 4px 15px rgba(0,0,0,0.3)",
         position: "relative", overflow: "hidden",
       }}
     >
