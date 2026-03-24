@@ -336,6 +336,17 @@ export const followAPI = {
 // ── Video API ──────────────────────────────────────────────────────────────
 export const videoAPI = {
 
+
+  delete: async (videoId) => {
+    const { data, error } = await supabase
+      .from('videos')
+      .delete()
+      .eq('id', videoId);
+
+    if (error) throw error;
+    return data;
+  },
+
   async getCategories() {
     const { data } = await supabase.rpc('get_unique_categories');
     return data?.map(r => r.category) || [];
