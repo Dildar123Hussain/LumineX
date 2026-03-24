@@ -12,11 +12,11 @@ import VideoCard from "../VideoCard";
 /* ─────────────────────────────────────────────────────────────
    SKELETON GRID
 ───────────────────────────────────────────────────────────── */
-const ProfileGridSkeleton = ({ isMobile }) => (
+const ProfileGridSkeleton = () => (
   <div style={{
     display: "grid",
-    gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(3,1fr)",
-    gap: isMobile ? 10 : 16,
+    gridTemplateColumns: "repeat(3, 1fr)", // Force 3 columns
+    gap: 16,
   }}>
     {Array(6).fill(0).map((_, i) => (
       <div key={i} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -108,6 +108,18 @@ export default function ProfilePage({ userId, passedData, onClose }) {
   const [editOpen, setEditOpen] = useState(false);
   const [showFollow, setShowFollow] = useState(null); // "followers" | "following" | null
 
+  
+// Inside ProfilePage.jsx useEffect
+useEffect(() => {
+  const handleDeleteUI = (e) => {
+    // Filter out the deleted video from the local state
+    setVideos(prev => prev.filter(v => v.id !== e.detail.videoId));
+  };
+
+  window.addEventListener('video_deleted', handleDeleteUI);
+  return () => window.removeEventListener('video_deleted', handleDeleteUI);
+}, []);
+
   // Optimized isOwn logic
   const isOwn = !!(
     session?.user?.id &&
@@ -118,6 +130,7 @@ export default function ProfilePage({ userId, passedData, onClose }) {
       profile?.id === session.user.id
     )
   );
+
 
   //console.log('userid',userId,'myprofil',myProfile,'ses',session.user)
 
@@ -501,7 +514,7 @@ export default function ProfilePage({ userId, passedData, onClose }) {
               gap: isMobile ? 10 : 14,
             }}>
               {videos.map(v => (
-                <VideoCard key={v.id} video={v} compact={isMobile} showViews />
+                <VideoCard key={v.id} video={v} compact={false} showViews={!isMobile} isOwner={isOwn} />
               ))}
             </div>
           )}
