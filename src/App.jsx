@@ -108,13 +108,12 @@ function AppInner() {
 
       {/* All Modals */}
       {/* All Modals */}
+      {/* All Modals */}
       {player && (
-        <div style={{ display: isViewingProfile ? 'none' : 'block' }}>
-          <PlayerModal
-            video={player}
-            onClose={() => setPlayer(null)}
-          />
-        </div>
+        <PlayerModal
+          video={player}
+          onClose={() => setPlayer(null)}
+        />
       )}
       <AuthModal />
       <SearchModal />
