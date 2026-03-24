@@ -12,17 +12,41 @@ import VideoCard from "../components/VideoCard";
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AD UNITS (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
 const MultiplexAdUnit = () => (
   <div style={{
-    gridColumn: '1 / -1', margin: '20px 0', padding: '10px',
-    background: '#1a1a1a', borderRadius: '12px', border: '1px solid #333',
+    /* Remove gridColumn: '1 / -1' so it fits in a single slot */
+    background: C.bg2, 
+    borderRadius: '12px', 
+    border: `1px solid ${C.border}`,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%', // Ensures it matches the height of neighboring cards
   }}>
-    <span style={{ fontSize: '12px', color: '#666', marginBottom: '8px', display: 'block' }}>
-      Recommended for You
-    </span>
-    <div id="ad-slot-12345" />
+    {/* Ad Placeholder/Thumbnail Area - matches VideoCard aspect ratio */}
+    <div style={{ 
+      aspectRatio: '16/9', 
+      background: '#1a1a1a', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justify: 'center',
+      position: 'relative'
+    }}>
+       <span style={{ fontSize: '10px', color: '#666', position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4 }}>
+        Sponsored
+      </span>
+       <div id="ad-slot-12345" style={{ width: '100%', height: '100%' }} />
+    </div>
+
+    {/* Content Area - matches VideoCard padding and text style */}
+    <div style={{ padding: '10px' }}>
+      <span style={{ fontSize: '13px', fontWeight: '600', color: C.text, display: 'block', marginBottom: '4px' }}>
+        Recommended for You
+      </span>
+      <span style={{ fontSize: '11px', color: C.muted }}>
+        Promoted Content
+      </span>
+    </div>
   </div>
 );
 
@@ -100,8 +124,8 @@ export function CategoryCard({ name, onClick }) {
         borderRadius: 16, padding: "18px 14px", textAlign: "center", cursor: "pointer",
         transition: "all .3s cubic-bezier(0.34,1.2,0.64,1)",
         transform: hov ? "translateY(-6px) scale(1.04)" : "none",
-        boxShadow: hov 
-          ? `0 10px 30px -10px ${color}, 0 0 15px ${color}30` 
+        boxShadow: hov
+          ? `0 10px 30px -10px ${color}, 0 0 15px ${color}30`
           : "0 4px 15px rgba(0,0,0,0.3)",
         position: "relative", overflow: "hidden",
       }}
@@ -205,8 +229,6 @@ function HeroBanner({ items }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIDEO GRID  (unchanged ad injection logic)
-// ─────────────────────────────────────────────────────────────────────────────
 function VideoGrid({ videos, loading, isMobile }) {
   const gridStyle = {
     display: "grid",
@@ -224,16 +246,17 @@ function VideoGrid({ videos, loading, isMobile }) {
     <div style={gridStyle}>
       {videos.map((v, i) => (
         <React.Fragment key={v.id || i}>
+          {/* 1. Show the Video Card */}
           <VideoCard video={v} />
-          {!isMobile && i === 3 && <MultiplexAdUnit />}
-          {isMobile && i === 5 && <MultiplexAdUnit />}
-          {isMobile && i === videos.length - 1 && videos.length > 6 && <MultiplexAdUnit />}
+
+          {/* 2. Show the Ad Card every 6 items */}
+          {/* No wrapper div with gridColumn here! It will just take the next grid slot */}
+          {(i + 1) % 6 === 0 && <MultiplexAdUnit />}
         </React.Fragment>
       ))}
     </div>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // FOLLOW REQUEST TOAST
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,7 +303,7 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
   const username = user.username || "anonymous";
   const avatar = user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
   const displayName = user.display_name || username;
-  
+
   // Generate a distinct theme color based on username for the banner
   const coverColor = `hsl(${(username.length * 55) % 360}, 60%, 25%)`;
 
@@ -317,7 +340,7 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
       onMouseLeave={() => !isMobile && setHov(false)}
       onClick={() => { setActiveProfile(user); setTab(`profile:${username}`); }}
       style={{
-        flexShrink: 0, 
+        flexShrink: 0,
         width: 140, // Slightly wider for the new design
         background: C.bg2,
         borderRadius: 20,
@@ -334,15 +357,15 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
       }}
     >
       {/* 1. Mini Banner Area */}
-      <div style={{ 
-        height: 40, 
-        background: `linear-gradient(45deg, ${coverColor}, ${C.bg3})`, 
-        position: "relative" 
+      <div style={{
+        height: 40,
+        background: `linear-gradient(45deg, ${coverColor}, ${C.bg3})`,
+        position: "relative"
       }}>
-        <div style={{ 
-          position: "absolute", inset: 0, 
-          background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)", 
-          animation: "glass-shine 3s infinite" 
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)",
+          animation: "glass-shine 3s infinite"
         }} />
       </div>
 
@@ -356,16 +379,16 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
               width: 56, height: 56, borderRadius: "50%",
               background: C.bg2,
               border: `3px solid ${followed ? "#4caf50" : C.bg2}`,
-              padding: 2, 
+              padding: 2,
               transition: "all 0.3s",
               objectFit: "cover",
               boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
             }}
           />
           {user.is_verified && (
-            <div style={{ 
-              position: "absolute", bottom: 2, right: 0, 
-              background: C.bg, borderRadius: "50%", padding: 1 
+            <div style={{
+              position: "absolute", bottom: 2, right: 0,
+              background: C.bg, borderRadius: "50%", padding: 1
             }}>
               <VerifiedBadge size={14} />
             </div>
@@ -373,23 +396,23 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
         </div>
 
         {/* 3. User Info */}
-        <div style={{ 
-          fontSize: 12, fontWeight: 800, color: C.text, 
-          marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" 
+        <div style={{
+          fontSize: 12, fontWeight: 800, color: C.text,
+          marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
         }}>
           {displayName}
         </div>
-        
-        <div style={{ 
-          fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 8 
+
+        <div style={{
+          fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 8
         }}>
           @{username.toLowerCase()}
         </div>
 
         {/* 4. Only Follower Count Stat */}
-        <div style={{ 
-          fontSize: 11, fontWeight: 700, color: C.accent, 
-          background: "rgba(255,255,255,0.03)", 
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: C.accent,
+          background: "rgba(255,255,255,0.03)",
           padding: "4px 0", borderRadius: 8, marginBottom: 10,
           border: `1px solid ${C.border}`
         }}>
@@ -401,7 +424,7 @@ function UserFollowCard({ user, initialFollowed = false, initialRequested = fals
           onClick={handleFollow}
           disabled={loading || followed}
           style={{
-            width: "100%", padding: "7px 0", borderRadius: 10, 
+            width: "100%", padding: "7px 0", borderRadius: 10,
             background: followed ? C.bg3 : requested ? "rgba(255,255,255,0.08)" : `linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`,
             border: (followed || requested) ? `1px solid ${C.border}` : "none",
             color: (followed || requested) ? C.text : "white",
@@ -574,7 +597,7 @@ export default function HomePage({ tab, catFilter, setCatFilter, filter, setFilt
   //const [catFilter, setCatFilter] = useState(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const LIMIT = 12;
+  const LIMIT = 30;
 
   // ── Category state (fetched from DB) ─────────────────────────────────────
   const [categories, setCategories] = useState([]);
@@ -741,7 +764,7 @@ export default function HomePage({ tab, catFilter, setCatFilter, filter, setFilt
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, padding: "12px 16px", background: C.bg3, borderRadius: 12, border: `1px solid ${C.border}` }}>
           <span style={{ fontSize: 20 }}>{catIcon(catFilter)}</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: C.text, textTransform: "capitalize" }}>{catFilter}</span>
-          <button onClick={() => {setCatFilter(null);setFilter("all");}}  style={{ marginLeft: "auto", background: C.accent, border: "none", borderRadius: 999, color: "white", padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Clear ✕</button>
+          <button onClick={() => { setCatFilter(null); setFilter("all"); }} style={{ marginLeft: "auto", background: C.accent, border: "none", borderRadius: 999, color: "white", padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Clear ✕</button>
         </div>
       )}
 
@@ -762,44 +785,44 @@ export default function HomePage({ tab, catFilter, setCatFilter, filter, setFilt
         </>
       )}
 
-{tab === "home" && !catFilter && (
-  <div style={{ marginBottom: 20 }}>
-    {/* Added the action and actionLabel props to the SectionHeader */}
-    <SectionHeader 
-      title="🏷 Browse Categories" 
-      action={() => setTab("categories")} 
-      actionLabel="See all" 
-    />
-    
-    <div style={{ 
-      display: "grid", 
-      gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", 
-      gap: 10 
-    }}>
- 
+      {tab === "home" && !catFilter && (
+        <div style={{ marginBottom: 20 }}>
+          {/* Added the action and actionLabel props to the SectionHeader */}
+          <SectionHeader
+            title="🏷 Browse Categories"
+            action={() => setTab("categories")}
+            actionLabel="See all"
+          />
 
-      {/* OTHER DB CATEGORIES */}
-      {categories.slice(0, 11).map(name => (
-        <CategoryCard 
-          key={name} 
-          name={name} 
-          onClick={() => setCatFilter(name)} 
-        />
-      ))}
-    </div>
-  </div>
-)}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))",
+            gap: 10
+          }}>
+
+
+            {/* OTHER DB CATEGORIES */}
+            {categories.slice(0, 11).map(name => (
+              <CategoryCard
+                key={name}
+                name={name}
+                onClick={() => setCatFilter(name)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
 
 
       {/* CONTENT FILTERS (Hot, New, VIP, Free) */}
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         {CONTENT_FILTERS.map(f => (
-          <FilterChip 
-            key={f.value} 
-            label={f.label} 
-            active={filter === f.value} 
-            onClick={() => setFilter(f.value)} 
+          <FilterChip
+            key={f.value}
+            label={f.label}
+            active={filter === f.value}
+            onClick={() => setFilter(f.value)}
           />
         ))}
       </div>
