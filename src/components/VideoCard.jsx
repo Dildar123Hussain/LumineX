@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { C, Avatar, VipBadge, VerifiedBadge, fmtNum, timeAgo } from "./ui/index";
 import { useApp } from "../context/AppContext";
 import { useIsMobile, useVideoLike } from "../hooks/index";
-import { likeAPI } from "../lib/supabase";
+import { likeAPI,videoAPI } from "../lib/supabase";
 
 export default function VideoCard({ video, cardWidth, compact, showViews, showChannel = true, isOwner }) {
   const { setTab, playVideo, setActiveProfile } = useApp();
@@ -155,19 +155,17 @@ export default function VideoCard({ video, cardWidth, compact, showViews, showCh
 
 
   // ... after other hooks like useVideoLike ...
-  const [currentViews, setCurrentViews] = useState(video.views_count || video.views || 0);
+  const [currentViews, setCurrentViews] = useState(video.views || video.views || 0);
 
-  useEffect(() => {
-    const handleUpdate = (e) => {
-      // If this specific video was just watched, update the count
-      if (e.detail.videoId === video.id) {
-        setCurrentViews(e.detail.views);
-      }
-    };
-
-    window.addEventListener('video_view_updated', handleUpdate);
-    return () => window.removeEventListener('video_view_updated', handleUpdate);
-  }, [video.id]);
+ useEffect(() => {
+  const handleUpdate = (e) => {
+    if (e.detail.videoId === video.id) {
+      setCurrentViews(e.detail.views);
+    }
+  };
+  window.addEventListener('video_view_updated', handleUpdate);
+  return () => window.removeEventListener('video_view_updated', handleUpdate);
+}, [video.id]);
 
   return (
     <div onClick={() => !lpOn && playVideo(video)} onMouseEnter={onEnter} onMouseLeave={onLeave}
@@ -404,7 +402,7 @@ export default function VideoCard({ video, cardWidth, compact, showViews, showCh
                   {pf.is_verified && <VerifiedBadge size={11} />}
                 </div>
               </div>
-              <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{fmtNum(video.views || 0)} views · {timeAgo(video.created_at)}</div>
+              <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{fmtNum(currentViews)} views · {timeAgo(video.created_at)}</div>
             </div>
           </div>
         </div>
