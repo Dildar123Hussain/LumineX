@@ -190,12 +190,26 @@ function HeroBanner({ items }) {
   const { playVideo } = useApp();
   const isMobile = useIsMobile();
   const [idx, setIdx] = useState(0);
+  const [liveViews, setLiveViews] = useState({});
 
   useEffect(() => {
     if (!items?.length) return;
     const t = setInterval(() => setIdx(i => (i + 1) % items.length), 5000);
     return () => clearInterval(t);
   }, [items?.length]);
+
+useEffect(() => {
+    const handleUpdate = (e) => {
+      setLiveViews(prev => ({
+        ...prev,
+        [e.detail.videoId]: e.detail.views
+      }));
+    };
+
+    window.addEventListener('video_view_updated', handleUpdate);
+    return () => window.removeEventListener('video_view_updated', handleUpdate);
+  }, []);
+
 
   if (!items?.length) return (
     <div style={{ borderRadius: isMobile ? 0 : 20, overflow: "hidden", marginBottom: 24, height: isMobile ? 220 : 320, background: C.bg3, marginLeft: isMobile ? -12 : 0, marginRight: isMobile ? -12 : 0 }}>
@@ -204,6 +218,9 @@ function HeroBanner({ items }) {
   );
 
   const item = items[idx % items.length];
+
+  const displayViews = liveViews[item.id] || item.views || 0;
+
   return (
     <div style={{ position: "relative", borderRadius: isMobile ? 0 : 20, overflow: "hidden", marginBottom: 24, height: isMobile ? 220 : 320, background: C.bg3, marginLeft: isMobile ? -12 : 0, marginRight: isMobile ? -12 : 0 }}>
       <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${item.thumbnail_url})`, backgroundSize: "cover", backgroundPosition: "center", opacity: 0.8, transition: "background-image .8s ease" }} />
@@ -212,7 +229,7 @@ function HeroBanner({ items }) {
         <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>🔥 Featured</div>
         <h2 style={{ fontSize: isMobile ? 18 : 26, fontWeight: 900, marginBottom: 8, maxWidth: 480, color: C.text, lineHeight: 1.3 }}>{item.title}</h2>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-          {item.profiles?.display_name || item.channel || "Creator"} · {fmtNum(item.views || item.views || 0)} views
+          {item.profiles?.display_name || item.channel || "Creator"} · {fmtNum(displayViews)} views views
         </div>
         <button onClick={() => playVideo(item)} style={{ alignSelf: "flex-start", padding: "11px 28px", borderRadius: 999, background: `linear-gradient(135deg,${C.accent},${C.accent2})`, border: "none", color: "white", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
           ▶ Watch Now
