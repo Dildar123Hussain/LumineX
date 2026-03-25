@@ -19,7 +19,41 @@ export function AppProvider({ children }) {
   const [theme, setThemeState] = useState(() => localStorage.getItem("lx_theme") || "dark");
   const toastTimer = useRef(null);
   const [activeProfile, setActiveProfile] = useState(null);
+  const [prevTab, setPrevTab] = useState("home");
 
+  useEffect(() => {
+    // If the new tab is NOT a profile, remember it as our 'back' target
+    if (typeof tab === 'string' && !tab.startsWith("profile:")) {
+      setPrevTab(tab);
+    }
+  }, [tab]);
+// 1. Add this function inside your AppProvider component
+const incrementView = async (videoId) => {
+    try {
+      const { data: newCount, error } = await supabase.rpc('increment_views', { 
+        vid: videoId 
+      });
+
+      if (error) throw error;
+
+      window.dispatchEvent(new CustomEvent('video_view_updated', {
+        detail: { 
+          videoId: videoId, 
+          views: newCount 
+        }
+      }));
+    } catch (err) {
+      console.error("View increment failed:", err);
+    }
+  };
+
+const playVideo = useCallback(async (video) => {
+    if (video.is_vip && !profile?.is_vip) { 
+      setVipModal(true); 
+      return; 
+    }
+    setPlayer(video);
+  }, [profile, setPlayer, setVipModal]);
 
   // Apply theme to document
   useEffect(() => {
@@ -95,11 +129,6 @@ export function AppProvider({ children }) {
   }, []);
 
 
-  const playVideo = useCallback((video) => {
-    if (video.is_vip && !profile?.is_vip) { setVipModal(true); return; }
-    setPlayer(video);
-  }, [profile]);
-
   // Inside AppProvider in AppContext.js
   const signOut = useCallback(async () => {
     try {
@@ -131,9 +160,9 @@ export function AppProvider({ children }) {
     <Ctx.Provider value={{
       session, profile, authReady,
       player, setPlayer, playVideo, activeProfile, setActiveProfile,
-      search, setSearch,
+      search, setSearch,incrementView,
       toast, showToast, setTab,
-      tab,
+      tab,prevTab,
       authModal, setAuthModal,
       vipModal, setVipModal,
       uploadModal, setUploadModal,
