@@ -53,7 +53,7 @@ export default function NavTabs() {
           <button onClick={() => {setTab("channels"); setShowMore(false);}} style={moreBtnStyle}>📺 Channels</button>
           <button onClick={() => {setTab("categories"); setShowMore(false);}} style={moreBtnStyle}>🏷 Categories</button>
           <button onClick={() => {setVipModal(true); setShowMore(false);}} style={{...moreBtnStyle, color: "#fbbf24"}}>💎 VIP Plan</button>
-          <button onClick={() => {setSearch(true); setShowMore(false);}} style={moreBtnStyle}>🔍 Search</button>
+         <button onClick={() => {setTab("history"); setShowMore(false);}} style={moreBtnStyle}>🕐 History</button>
         </div>
       )}
 
