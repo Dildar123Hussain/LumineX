@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { C, Avatar, Spinner, timeAgo, fmtNum } from "../ui/index";
 import { useApp } from "../../context/AppContext";
 import { commentAPI } from "../../lib/supabase";
-import { DUMMY_COMMENTS } from "../../data/theme";
+
 
 /* ─────────────────────────────────────────────────────────────
    LIKE BUTTON
@@ -605,37 +605,30 @@ export default function CommentSection({ videoId, videoOwnerId }) {
   const [showCount, setShowCount] = useState(8);
   const subRef = useRef(null);
 
-  const loadDummy = useCallback(() => {
-    const dummies = DUMMY_COMMENTS.map(c => ({ ...c, video_id: videoId }));
-    setComments(dummies);
-    setLoading(false);
-  }, [videoId]);
+ 
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await commentAPI.getForVideo(videoId);
-      const nestedData = nestComments(data);
+const load = useCallback(async () => {
+  setLoading(true);
+  try {
+    const data = await commentAPI.getForVideo(videoId);
+    const nestedData = nestComments(data);
 
-      const dbIds = new Set(data.map(c => c.id));
-      const dummies = DUMMY_COMMENTS
-        .filter(c => !dbIds.has(c.id))
-        .map(c => ({ ...c, video_id: videoId }));
+    // Only set the data retrieved from the API
+    setComments(nestedData);
 
-      setComments([...nestedData, ...dummies]);
-
-      if (session && data.length > 0) {
-        const allIds = data.map(c => c.id);
-        const liked = await commentAPI.getLikedIds(session.user.id, allIds);
-        setLikedIds(liked);
-      }
-    } catch (e) {
-      console.error("Load error:", e);
-      loadDummy();
-    } finally {
-      setLoading(false);
+    if (session && data.length > 0) {
+      const allIds = data.map(c => c.id);
+      const liked = await commentAPI.getLikedIds(session.user.id, allIds);
+      setLikedIds(liked);
     }
-  }, [videoId, session, loadDummy]);
+  } catch (e) {
+    console.error("Load error:", e);
+    // Set to empty array on error instead of loading dummies
+    setComments([]); 
+  } finally {
+    setLoading(false);
+  }
+}, [videoId, session]); // Removed loadDummy from dependencies
 
   useEffect(() => { load(); }, [load]);
 
