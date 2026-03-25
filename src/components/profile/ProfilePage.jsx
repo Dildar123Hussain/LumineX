@@ -9,6 +9,255 @@ import { useFollow, useIsMobile } from "../../hooks/index";
 import { AVATARS } from "../../data/theme";
 import VideoCard from "../VideoCard";
 
+const CURRENCIES = [
+  { code: "USD", symbol: "$", rate: 1, name: "US Dollar" },
+  { code: "INR", symbol: "₹", rate: 83.30, name: "Indian Rupee" },
+  { code: "BDT", symbol: "৳", rate: 110.50, name: "Bangladeshi Taka" },
+  { code: "PKR", symbol: "₨", rate: 278.20, name: "Pakistani Rupee" },
+  { code: "EUR", symbol: "€", rate: 0.92, name: "Euro" },
+  { code: "GBP", symbol: "£", rate: 0.79, name: "British Pound" },
+  { code: "AED", symbol: "د.إ", rate: 3.67, name: "UAE Dirham" },
+  { code: "NPR", symbol: "रू", rate: 133.20, name: "Nepalese Rupee" },
+  { code: "SAR", symbol: "﷼", rate: 3.75, name: "Saudi Riyal" },
+  { code: "IDR", symbol: "Rp", rate: 15600, name: "Indonesian Rupiah" },
+];
+
+function CountUp({ end, duration = 1000 }) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let startTime = null;
+    const endValue = Number(end);
+
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+
+      // Easing function for a smooth finish
+      const easeOutQuad = (t) => t * (2 - t);
+      const currentCount = easeOutQuad(progress) * endValue;
+
+      setCount(currentCount);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [end, duration]);
+
+  return <>{count.toFixed(2)}</>;
+}
+
+function WithdrawModal({ profile, onClose, onFinish }) {
+  const isMobile = useIsMobile();
+  const [step, setStep] = useState(1);
+  const [selectedCur, setSelectedCur] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [details, setDetails] = useState({ method: "UPI", address: "", name: "" });
+  const [loading, setLoading] = useState(false);
+
+  const minWithdrawUSD = 10;
+  const userBalanceUSD = profile?.earnings_balance || 0;
+  const isAmountValid = Number(amount) >= minWithdrawUSD && Number(amount) <= userBalanceUSD;
+
+  const handleNext = () => {
+    if (!selectedCur) return;
+    if (isAmountValid) setStep(2);
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    // Simulate API Call
+    setTimeout(() => {
+      setLoading(false);
+      onFinish(`Payout of ${selectedCur.symbol}${(amount * selectedCur.rate).toFixed(2)} is being processed!`);
+      onClose();
+    }, 1800);
+  };
+
+  return (
+    <Modal onClose={onClose} maxWidth={480}>
+      <div style={{
+        padding: isMobile ? "12px 8px" : "20px",
+        background: `linear-gradient(180deg, ${C.bg} 0%, ${C.bg2} 100%)`,
+        borderRadius: 24
+      }}>
+        {/* Header Section */}
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{
+            fontSize: 40, marginBottom: 12,
+            filter: 'drop-shadow(0 0 10px rgba(76, 175, 80, 0.3))'
+          }}>🏦</div>
+          <h2 style={{
+            fontSize: 24, fontWeight: 900, color: C.text,
+            margin: 0, fontFamily: "'Syne', sans-serif"
+          }}>Secure Withdrawal</h2>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            marginTop: 8, padding: '4px 12px', borderRadius: 20,
+            background: 'rgba(76, 175, 80, 0.1)', border: '1px solid rgba(76, 175, 80, 0.2)'
+          }}>
+            <span style={{ fontSize: 12, color: '#4caf50', fontWeight: 700 }}>
+              Available: ${userBalanceUSD.toFixed(2)}
+            </span>
+          </div>
+        </div>
+
+        {step === 1 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {/* Currency Grid */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'block' }}>
+                1. Select Payout Currency
+              </label>
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10,
+                maxHeight: 180, overflowY: 'auto', padding: '4px',
+                scrollbarWidth: 'none'
+              }}>
+                {CURRENCIES.map(c => (
+                  <button
+                    key={c.code}
+                    onClick={() => setSelectedCur(c)}
+                    style={{
+                      padding: '14px', borderRadius: 16,
+                      border: `2px solid ${selectedCur?.code === c.code ? C.accent : C.border}`,
+                      background: selectedCur?.code === c.code ? `${C.accent}15` : C.bg3,
+                      color: selectedCur?.code === c.code ? C.accent : C.text,
+                      fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    }}
+                  >
+                    <span>{c.name}</span>
+                    <span style={{ opacity: 0.6 }}>{c.symbol}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount Input Section */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'block' }}>
+                2. Enter Amount (USD)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  style={{
+                    width: '100%', padding: '18px 20px', borderRadius: 16,
+                    background: C.bg3, border: `1px solid ${C.border}`,
+                    color: C.text, fontSize: 18, fontWeight: 800, outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontWeight: 700 }}>USD</div>
+              </div>
+            </div>
+
+            {/* Conversion Result Box */}
+            {selectedCur && amount > 0 && (
+              <div style={{
+                background: `linear-gradient(90deg, ${C.accent}15, transparent)`,
+                padding: '20px', borderRadius: 20, borderLeft: `4px solid ${C.accent}`,
+                animation: 'fadeIn 0.3s ease'
+              }}>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>You will receive approx:</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: C.text }}>
+                  {selectedCur.symbol}{(amount * selectedCur.rate).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            )}
+
+            {/* Dynamic Large Action Button */}
+            <button
+              onClick={handleNext}
+              disabled={!selectedCur || !isAmountValid}
+              style={{
+                width: '100%', padding: '20px', borderRadius: 18,
+                background: !selectedCur ? C.bg3 : (!isAmountValid ? '#ff444422' : `linear-gradient(135deg, ${C.accent}, ${C.accent2})`),
+                color: !selectedCur ? C.muted : (!isAmountValid ? '#ff4444' : '#fff'),
+                border: 'none', fontSize: 16, fontWeight: 800, cursor: isAmountValid ? 'pointer' : 'not-allowed',
+                transition: 'all 0.3s', boxShadow: isAmountValid ? `0 8px 25px ${C.accent}44` : 'none'
+              }}
+            >
+              {!selectedCur
+                ? "Select a Currency"
+                : (Number(amount) < minWithdrawUSD
+                  ? `Minimum $${minWithdrawUSD} Required`
+                  : (Number(amount) > userBalanceUSD ? "Insufficient Balance" : "Continue to Payout"))
+              }
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, animation: 'slideIn 0.3s ease' }}>
+            <div style={{ textAlign: 'center', background: C.bg3, padding: '12px', borderRadius: 12, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, color: C.muted }}>Payout Amount</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#4caf50' }}>{selectedCur.symbol}{(amount * selectedCur.rate).toFixed(2)}</div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'block' }}>
+                Payment Method
+              </label>
+              <select
+                value={details.method}
+                onChange={e => setDetails({ ...details, method: e.target.value })}
+                style={{
+                  width: '100%', padding: '16px', borderRadius: 14,paddingRight: '40px',
+                  background: C.bg3, color: C.text, border: `1px solid ${C.border}`,
+                  fontSize: 14, fontWeight: 600, outline: 'none',appearance: 'none',
+                }}
+              >
+                <option value="UPI">UPI / GPay / PhonePe (India)</option>
+                <option value="Bkash">bKash / Nagad (Bangladesh)</option>
+                <option value="JazzCash">JazzCash / EasyPaisa (Pakistan)</option>
+                <option value="PayPal">PayPal (International)</option>
+                <option value="Bank">Direct Bank Transfer</option>
+              </select>
+            </div>
+
+            <Input
+              label="Account Holder Name"
+              placeholder="Full Name as per ID"
+              value={details.name}
+              onChange={e => setDetails({ ...details, name: e.target.value })}
+            />
+
+            <Input
+              label="Payment Address / Number"
+              placeholder="UPI ID, bKash No, or Email"
+              value={details.address}
+              onChange={e => setDetails({ ...details, address: e.target.value })}
+            />
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
+              <Btn onClick={() => setStep(1)} variant="secondary" style={{ flex: 1, padding: '16px' }}>Back</Btn>
+              <Btn onClick={handleSubmit} loading={loading} style={{
+                flex: 2, padding: '16px',
+                background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`,
+                boxShadow: `0 8px 25px ${C.accent}44`
+              }}>
+                Confirm Payout
+              </Btn>
+            </div>
+
+            <div style={{ fontSize: 10, color: C.muted, textAlign: 'center', marginTop: 10 }}>
+              🛡️ Verified Secure Transaction • 24/7 Support
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+
+
 /* ─────────────────────────────────────────────────────────────
    SKELETON GRID
 ───────────────────────────────────────────────────────────── */
@@ -94,7 +343,7 @@ function FollowList({ users, onClose }) {
 export default function ProfilePage({ userId, passedData, onClose }) {
   const {
     session, profile: myProfile, activeProfile,
-    refreshProfile, showToast, setTab, setActiveProfile,
+    refreshProfile, showToast, setTab, setActiveProfile, prevTab, tab
   } = useApp();
   const isMobile = useIsMobile();
 
@@ -108,17 +357,44 @@ export default function ProfilePage({ userId, passedData, onClose }) {
   const [editOpen, setEditOpen] = useState(false);
   const [showFollow, setShowFollow] = useState(null); // "followers" | "following" | null
 
-  
-// Inside ProfilePage.jsx useEffect
-useEffect(() => {
-  const handleDeleteUI = (e) => {
-    // Filter out the deleted video from the local state
-    setVideos(prev => prev.filter(v => v.id !== e.detail.videoId));
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+
+
+  const handleClose = () => {
+    if (onClose) return onClose();
+
+    if (prevTab && prevTab !== tab) {
+      setTab(prevTab);
+    } else {
+      setTab("home");
+    }
   };
 
-  window.addEventListener('video_deleted', handleDeleteUI);
-  return () => window.removeEventListener('video_deleted', handleDeleteUI);
-}, []);
+  const statNumStyle = {
+    fontSize: isMobile ? 18 : 22,
+    fontWeight: 900,
+    color: C.text,
+    lineHeight: 1
+  };
+
+  const statLabelStyle = {
+    fontSize: 10,
+    color: C.muted,
+    letterSpacing: .5,
+    textTransform: "uppercase",
+    marginTop: 2
+  };
+
+  // Inside ProfilePage.jsx useEffect
+  useEffect(() => {
+    const handleDeleteUI = (e) => {
+      // Filter out the deleted video from the local state
+      setVideos(prev => prev.filter(v => v.id !== e.detail.videoId));
+    };
+
+    window.addEventListener('video_deleted', handleDeleteUI);
+    return () => window.removeEventListener('video_deleted', handleDeleteUI);
+  }, []);
 
   // Optimized isOwn logic
   const isOwn = !!(
@@ -142,9 +418,9 @@ useEffect(() => {
   const loadMetadata = useCallback(async () => {
     if (!userId) return;
     if (isOwn && myProfile && !profile) {
-    setProfile(myProfile);
-    return;
-  }
+      setProfile(myProfile);
+      return;
+    }
 
     try {
       // 1. Clean the ID: Remove '@' and whitespace
@@ -277,6 +553,11 @@ useEffect(() => {
     ...(isOwn ? [{ id: "saved", icon: "🔖", label: "Saved" }] : []),
   ];
 
+
+
+
+
+
   return (
     <div style={{
       maxWidth: 940, margin: "0 auto",
@@ -286,7 +567,7 @@ useEffect(() => {
 
       {/* ── ATTRACTIVE CLOSE BUTTON ── */}
       <button
-        onClick={onClose}
+        onClick={handleClose}
         style={{
           position: isMobile ? "fixed" : "absolute",
           top: isMobile ? 56 : 10,
@@ -414,6 +695,56 @@ useEffect(() => {
                   Videos
                 </div>
               </div>
+              {/* --- Revenue Stat Block --- */}
+              <div
+                onClick={() => isOwn && setWithdrawOpen(true)}
+                style={{
+                  textAlign: "left",
+                  cursor: isOwn ? "pointer" : "default",
+                  padding: isOwn ? "6px 12px" : "0",
+                  marginLeft: isOwn ? "-12px" : "0", // Offsets padding to keep alignment
+                  borderRadius: "12px",
+                  background: isOwn ? "rgba(76, 175, 80, 0.05)" : "transparent",
+                  border: isOwn ? `1px solid rgba(76, 175, 80, 0.1)` : "none",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={e => {
+                  if (isOwn) {
+                    e.currentTarget.style.background = "rgba(76, 175, 80, 0.12)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (isOwn) {
+                    e.currentTarget.style.background = "rgba(76, 175, 80, 0.05)";
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }
+                }}
+              >
+                <div style={{
+                  ...statNumStyle,
+                  color: "#4caf50",
+                  textShadow: "0 0 10px rgba(76, 175, 80, 0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4
+                }}>
+                  $<CountUp end={profile.earnings_balance || 0} />
+                  {isOwn && <span style={{ fontSize: 10, marginLeft: 2, opacity: 0.7 }}></span>}
+                </div>
+
+                <div style={{
+                  ...statLabelStyle,
+                  color: "#4caf50",
+                  opacity: 0.8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4
+                }}>
+                  Revenue {isOwn && <span style={{ fontSize: 9, fontWeight: 800 }}></span>}
+                </div>
+              </div>
+
             </div>
 
             {/* Action buttons */}
@@ -567,6 +898,13 @@ useEffect(() => {
           />
         </Modal>
       )}
+      {withdrawOpen && (
+        <WithdrawModal
+          profile={profile}
+          onClose={() => setWithdrawOpen(false)}
+          onFinish={(msg) => showToast(msg, "success")}
+        />
+      )}
     </div>
   );
 }
@@ -703,3 +1041,5 @@ function EditModal({ profile, onClose, onSave }) {
     </Modal>
   );
 }
+
+
