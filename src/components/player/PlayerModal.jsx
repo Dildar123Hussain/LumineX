@@ -421,8 +421,8 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
       <div style={{
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
-        padding: isMobile ? "10px 12px" : "14px 20px",
+        justifyContent: "flex-start",
+        padding: isMobile ? "10px 16px" : "14px 20px",
         borderTop: `1px solid ${adData.accent}22`,
         position: "relative",
         zIndex: 2,
@@ -431,9 +431,9 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
         minHeight: isMobile ? 60 : "auto",
         background: isMobile ? "rgba(0,0,0,0.4)" : "transparent",
       }}>
-        
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, marginRight: 'auto' }}>
           {/* Countdown Ring */}
           <div style={{ position: "relative", width: 40, height: 40 }}>
             <svg width={40} height={40} style={{ transform: "rotate(-90deg)" }}>
@@ -486,7 +486,7 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
 // MAIN EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PlayerModal({ video: initVideo, onClose }) {
-  const { session, profile, setAuthModal, showToast, setActiveProfile, setPlayer, setTab,incrementView } = useApp();
+  const { session, profile, setAuthModal, showToast, setActiveProfile, setPlayer, setTab, incrementView } = useApp();
 
   const isMobile = useIsMobile();
   const wrapRef = useRef(null);
@@ -564,7 +564,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }, 30_000); // every 30 seconds
 
     return () => clearInterval(sidebarRefreshRef.current);
-  }, []); 
+  }, []);
 
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -616,7 +616,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
         }
         return next;
       });
-    }, 1000);
+    }, 1500);
   }, []);
 
   // Cleanup on unmount
@@ -627,7 +627,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   }, []);
 
 
-    const cancelAuto = useCallback(() => {
+  const cancelAuto = useCallback(() => {
     clearInterval(autoTimer.current);
     setAutoCountdown(null);
   }, []);
@@ -642,7 +642,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   }, [related, cancelAuto]);
 
 
-    // Separate the actual download logic
+  // Separate the actual download logic
   const executeDownload = useCallback(() => {
     const a = document.createElement("a");
     a.href = video.video_url;
@@ -654,14 +654,32 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     showToast("Download started!", "success");
   }, [video]);
 
+  // A $2.00 CPM for a standard 15s ad = $0.002 per view.
+  // This breaks down to $0.00013 per second.
+  // Minimum Indian Market Rate: $0.50 CPM = $0.000033 per second
+  const MIN_REVENUE_PER_SECOND = 0.000033;
   // ─────────────────────────────────────────────────────────────────────────
-  // skipAd — called manually (button) or automatically (effect below)
-  // ─────────────────────────────────────────────────────────────────────────
-  const skipAd = useCallback(() => {
+  const skipAd = useCallback(async () => {
     if (adTimerRef.current) {
       clearInterval(adTimerRef.current);
       adTimerRef.current = null;
     }
+
+    const totalGenerated = adTotalDuration * MIN_REVENUE_PER_SECOND;
+
+    try {
+      if (totalGenerated > 0) {
+        // Calls the SQL function that gives 80% to the user
+        await supabase.rpc('track_ad_revenue_80_split', {
+          vid: video.id,
+          total_val: totalGenerated
+        });
+        console.log(`Ad: ${adTotalDuration}s. Generated: $${totalGenerated}. User (80%): $${totalGenerated * 0.8}`);
+      }
+    } catch (err) {
+      console.error("Revenue tracking failed:", err);
+    }
+
     setAdActive(false);
     setAdTime(0);
     setCanSkip(false);
@@ -681,7 +699,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
         playNext(); // Normal behavior if not a download ad
       }
     }
-  }, [currentAdPart, isDownloadPending, executeDownload, playNext]);
+  }, [currentAdPart, isDownloadPending, executeDownload, playNext, adTotalDuration, video.id]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // AUTO-SKIP: when adTime hits 0 AND canSkip is true → fire skipAd.
@@ -737,36 +755,36 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   // ─────────────────────────────────────────────────────────────────────────
   // View count increment — fires once after 3 s of actual playback.
   // ─────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────
-// View count increment — fires once after 3 s of actual playback.
-// ─────────────────────────────────────────────────────────────────────────
-useEffect(() => {
-  // 1. Reset the ref whenever the video ID changes so new videos can be counted
-  viewIncremented.current = false;
-}, [video.id]);
+  // ─────────────────────────────────────────────────────────────────────────
+  // View count increment — fires once after 3 s of actual playback.
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // 1. Reset the ref whenever the video ID changes so new videos can be counted
+    viewIncremented.current = false;
+  }, [video.id]);
 
-useEffect(() => {
-  // 2. Don't start timer if already counted, in an ad, or paused
-  if (!playing || viewIncremented.current || adActive) return;
+  useEffect(() => {
+    // 2. Don't start timer if already counted, in an ad, or paused
+    if (!playing || viewIncremented.current || adActive) return;
 
-  const timer = setTimeout(async () => {
-    // 3. Final check: still playing and no ad active after 3 seconds?
-    if (!viewIncremented.current && !adActive && playing) {
-      try {
-        // 4. Call the global function from AppContext 
-        // (This handles the DB update AND the window dispatch)
-        await incrementView(video.id);
-        
-        // 5. Mark as finished for THIS video instance
-        viewIncremented.current = true;
-      } catch (err) {
-        console.error("Failed to increment view:", err);
+    const timer = setTimeout(async () => {
+      // 3. Final check: still playing and no ad active after 3 seconds?
+      if (!viewIncremented.current && !adActive && playing) {
+        try {
+          // 4. Call the global function from AppContext 
+          // (This handles the DB update AND the window dispatch)
+          await incrementView(video.id);
+
+          // 5. Mark as finished for THIS video instance
+          viewIncremented.current = true;
+        } catch (err) {
+          console.error("Failed to increment view:", err);
+        }
       }
-    }
-  }, 3000);
+    }, 3000);
 
-  return () => clearTimeout(timer);
-}, [playing, video.id, adActive, incrementView]);
+    return () => clearTimeout(timer);
+  }, [playing, video.id, adActive, incrementView]);
   // ─────────────────────────────────────────────────────────────────────────
   // Sync player if another tab fires the view-update event
   // ─────────────────────────────────────────────────────────────────────────
