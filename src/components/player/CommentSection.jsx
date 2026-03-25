@@ -326,8 +326,8 @@ function CommentItem({
   likedIds, onLikeToggle, onDelete, onNewComment,
   depth = 0,
 }) {
-  const { session, setActiveProfile, setTab, setPlayer, setIsPlaying } = useApp();
-  const navigateTo = useProfileNav();
+  const { session, setActiveProfile, setTab, setPlayer } = useApp();
+
   const [replying, setReplying] = useState(false);
   const [showReplies, setShowReplies] = useState(false);
 
@@ -335,32 +335,31 @@ function CommentItem({
   const isRoot = depth === 0;
 
   /* ── navigate to commenter's profile ── */
-  const goToProfile = (e, profileData) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+ const goToProfile = (e, profileData) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 
-    // 1. Get the unique identifier
-    const identifier = profileData?.username || profileData?.id;
-    if (!identifier) return;
+  // 1. Get the unique identifier (Username is best for routing)
+  const identifier = profileData?.username || profileData?.id;
+  if (!identifier) return;
 
-    // 2. If the comment section is inside a player/modal, 
-    // we should close the player to see the profile clearly
-    // (Matches your PlayerModal logic)
-    //if (setPlayer) setPlayer(null);
+  // 2. Pause the video so it doesn't keep playing in the background
+  window.dispatchEvent(new CustomEvent('lx_pause_video'));
 
-    // 3. Reset scroll position so the profile page starts at the top
-    window.dispatchEvent(new CustomEvent('lx_pause_video'));
-    window.scrollTo(0, 0);
+  // 3. Close the Player Modal 
+  // If this is missing, the profile page changes BEHIND the modal, 
+  // making it look like nothing happened.
+  if (setPlayer) setPlayer(null);
 
-    // 4. Use a small timeout to let the modal close/state update 
-    // before switching the tab
-    setTimeout(() => {
-      setActiveProfile(profileData);
-      setTab(`profile:${identifier}`);
-    }, 50);
-  };
+  // 4. Update the App State
+  setActiveProfile(profileData);
+  setTab(`profile:${identifier}`);
+
+  // 5. Scroll to top immediately
+  window.scrollTo(0, 0);
+};
 
   return (
     <div style={{ marginBottom: isRoot ? 16 : 8, paddingLeft: isRoot ? 0 : 44 }}>
