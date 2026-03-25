@@ -431,13 +431,7 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
         minHeight: isMobile ? 60 : "auto",
         background: isMobile ? "rgba(0,0,0,0.4)" : "transparent",
       }}>
-        <div style={{ fontSize: isMobile ? 9 : 10, color: "rgba(255,255,255,.5)", fontWeight: 600, flex: 1 }}>
-          {isUnskippable
-            ? "⛔ Unskippable"
-            : canSkip
-              ? "✅ Ready to skip"
-              : `⏳ Skip in ${Math.ceil(adTime)}s`}
-        </div>
+        
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {/* Countdown Ring */}
@@ -492,7 +486,7 @@ function AdOverlay({ adData, adTime, adTotalDuration, canSkip, currentAdPart, is
 // MAIN EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PlayerModal({ video: initVideo, onClose }) {
-  const { session, profile, setAuthModal, showToast, setActiveProfile, setPlayer, setTab } = useApp();
+  const { session, profile, setAuthModal, showToast, setActiveProfile, setPlayer, setTab,incrementView } = useApp();
 
   const isMobile = useIsMobile();
   const wrapRef = useRef(null);
@@ -570,27 +564,9 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     }, 30_000); // every 30 seconds
 
     return () => clearInterval(sidebarRefreshRef.current);
-  }, []); // mount once, survives video changes ✅
+  }, []); 
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // startAd — THE FIXED VERSION
-  //
-  // ROOT CAUSE OF THE OLD BUG:
-  //   The timer decremented adTime from `duration` → 0.
-  //   `setCanSkip(true)` was called inside the same tick as
-  //   `clearInterval` (when newTime <= 0), but clearInterval ran
-  //   FIRST, so the state setter for canSkip was batched AFTER the
-  //   interval stopped — causing a race where the auto-skip effect
-  //   sometimes never fired for short (5 s, 6 s) unskippable ads.
-  //
-  // FIX:
-  //   1. Separate "unskippable" logic so canSkip is NEVER set to true
-  //      for unskippable ads until adTime actually reaches 0.
-  //   2. When newTime reaches 0 we still set adTime = 0 and let a
-  //      dedicated useEffect (below) watch for `adTime === 0` to
-  //      trigger skipAd.  This guarantees the state settles before
-  //      we act on it — no race condition.
-  //   3. For skippable ads (e.g. 15 s), canSkip fires at elapsed >= 5.
+
   // ─────────────────────────────────────────────────────────────────────────
   const startAd = useCallback((duration, type, adIdx) => {
     if (duration <= 0) return;
@@ -736,7 +712,7 @@ export default function PlayerModal({ video: initVideo, onClose }) {
     viewIncremented.current = false;
 
     const strategy = getStrategy(sessionCount, video.id);
-    console.log("--- AD DEBUG ---", { session: sessionCount, label: strategy.label, strategy });
+    //console.log("--- AD DEBUG ---", { session: sessionCount, label: strategy.label, strategy });
 
     if (!adActive) {
       if (strategy.pre > 0) {
@@ -761,29 +737,36 @@ export default function PlayerModal({ video: initVideo, onClose }) {
   // ─────────────────────────────────────────────────────────────────────────
   // View count increment — fires once after 3 s of actual playback.
   // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!playing || viewIncremented.current || adActive) return;
+// ─────────────────────────────────────────────────────────────────────────
+// View count increment — fires once after 3 s of actual playback.
+// ─────────────────────────────────────────────────────────────────────────
+useEffect(() => {
+  // 1. Reset the ref whenever the video ID changes so new videos can be counted
+  viewIncremented.current = false;
+}, [video.id]);
 
-    const timer = setTimeout(async () => {
-      if (!viewIncremented.current && !adActive) {
-        try {
-          const newViewCount = await videoAPI.incrementViews(video.id);
-          const updatedVideo = { ...video, views: newViewCount, views_count: newViewCount };
-          sessionStorage.setItem(`video_${video.id}`, JSON.stringify(updatedVideo));
-          setVideo(updatedVideo);
-          window.dispatchEvent(new CustomEvent("video_view_updated", {
-            detail: { videoId: video.id, views: newViewCount },
-          }));
-          viewIncremented.current = true;
-        } catch (err) {
-          console.error("Failed to increment view:", err);
-        }
+useEffect(() => {
+  // 2. Don't start timer if already counted, in an ad, or paused
+  if (!playing || viewIncremented.current || adActive) return;
+
+  const timer = setTimeout(async () => {
+    // 3. Final check: still playing and no ad active after 3 seconds?
+    if (!viewIncremented.current && !adActive && playing) {
+      try {
+        // 4. Call the global function from AppContext 
+        // (This handles the DB update AND the window dispatch)
+        await incrementView(video.id);
+        
+        // 5. Mark as finished for THIS video instance
+        viewIncremented.current = true;
+      } catch (err) {
+        console.error("Failed to increment view:", err);
       }
-    }, 3000);
+    }
+  }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [playing, video.id, adActive]);
-
+  return () => clearTimeout(timer);
+}, [playing, video.id, adActive, incrementView]);
   // ─────────────────────────────────────────────────────────────────────────
   // Sync player if another tab fires the view-update event
   // ─────────────────────────────────────────────────────────────────────────
