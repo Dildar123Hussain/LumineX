@@ -21,12 +21,19 @@ export function AppProvider({ children }) {
   const [activeProfile, setActiveProfile] = useState(null);
   const [prevTab, setPrevTab] = useState("home");
 
-  useEffect(() => {
-    // If the new tab is NOT a profile, remember it as our 'back' target
-    if (typeof tab === 'string' && !tab.startsWith("profile:")) {
-      setPrevTab(tab);
+const changeTab = useCallback((newTab) => {
+  setTab((currentTab) => {
+    // If we are moving TO a profile, remember where we are coming FROM
+    if (typeof newTab === 'string' && newTab.startsWith("profile:")) {
+      setPrevTab(currentTab);
     }
-  }, [tab]);
+    return newTab;
+  });
+}, []);
+
+
+
+  
 // 1. Add this function inside your AppProvider component
 const incrementView = async (videoId) => {
     try {
@@ -161,7 +168,7 @@ const playVideo = useCallback(async (video) => {
       session, profile, authReady,
       player, setPlayer, playVideo, activeProfile, setActiveProfile,
       search, setSearch,incrementView,
-      toast, showToast, setTab,
+      toast, showToast, setTab:changeTab,
       tab,prevTab,
       authModal, setAuthModal,
       vipModal, setVipModal,
