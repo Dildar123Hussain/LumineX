@@ -347,10 +347,10 @@ export const videoAPI = {
     return data;
   },
 
-  async getCategories() {
-    const { data } = await supabase.rpc('get_unique_categories');
-    return data?.map(r => r.category) || [];
-  },
+  //async getCategories() {
+    //const { data } = await supabase.rpc('get_unique_categories');
+    //return data?.map(r => r.category) || [];
+  //},
 
   async getUniversalFeed(userId, page, limit, category, filter) {
     const { data, error } = await supabase.rpc('get_universal_feed', {
