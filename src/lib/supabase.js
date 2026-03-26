@@ -706,46 +706,20 @@ export const historyAPI = {
   },
 };
 
-// =============================================================================
-// SQL TO RUN IN SUPABASE SQL EDITOR
-// =============================================================================
-//
-// -- RPC: get_unique_categories (used by videoAPI.getCategories)
-// CREATE OR REPLACE FUNCTION get_unique_categories()
-// RETURNS TABLE(category text) AS $$
-//   SELECT DISTINCT unnest(categories) AS category
-//   FROM public.videos
-//   WHERE categories IS NOT NULL AND array_length(categories, 1) > 0
-//   ORDER BY category;
-// $$ LANGUAGE sql STABLE SECURITY DEFINER;
-//
-// -- RPC: increment_followers_count
-// CREATE OR REPLACE FUNCTION increment_followers_count(target_user_id uuid)
-// RETURNS void AS $$
-//   UPDATE public.profiles SET followers_count = COALESCE(followers_count,0)+1 WHERE id=target_user_id;
-// $$ LANGUAGE sql SECURITY DEFINER;
-//
-// -- RPC: increment_following_count
-// CREATE OR REPLACE FUNCTION increment_following_count(target_user_id uuid)
-// RETURNS void AS $$
-//   UPDATE public.profiles SET following_count = COALESCE(following_count,0)+1 WHERE id=target_user_id;
-// $$ LANGUAGE sql SECURITY DEFINER;
-//
-// -- Add following_count if missing
-// ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS following_count integer NOT NULL DEFAULT 0;
-//
-// -- follow_requests table (if not already created)
-// CREATE TABLE IF NOT EXISTS public.follow_requests (
-//   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-//   sender_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-//   recipient_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-//   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
-//   created_at timestamptz NOT NULL DEFAULT now(),
-//   UNIQUE (sender_id, recipient_id)
-// );
-// ALTER TABLE public.follow_requests ENABLE ROW LEVEL SECURITY;
-// CREATE POLICY "sender can insert" ON public.follow_requests FOR INSERT WITH CHECK (auth.uid()=sender_id);
-// CREATE POLICY "parties can read" ON public.follow_requests FOR SELECT USING (auth.uid()=recipient_id OR auth.uid()=sender_id);
-// CREATE POLICY "parties can update" ON public.follow_requests FOR UPDATE USING (auth.uid()=recipient_id OR auth.uid()=sender_id);
-// ALTER PUBLICATION supabase_realtime ADD TABLE public.follow_requests;
-// =============================================================================
+
+export const payoutAPI = {
+  executeWithdrawal: async (userId, data) => {
+    const { data: updatedProfile, error } = await supabase.rpc('process_withdrawal', {
+      p_user_id: userId,
+      p_amount_usd: data.amountUSD,
+      p_currency: data.currency,
+      p_converted_amount: data.convertedAmount,
+      p_method: data.method,
+      p_account_name: data.accountName,
+      p_account_details: data.accountDetails
+    });
+
+    if (error) throw error;
+    return updatedProfile; // This is the profile with the NEW balance
+  }
+};
