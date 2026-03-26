@@ -4,7 +4,7 @@ import {
   Modal, Skeleton, fmtNum, timeAgo,
 } from "../ui/index";
 import { useApp } from "../../context/AppContext";
-import { profileAPI, followAPI, videoAPI, vipAPI, likeAPI } from "../../lib/supabase";
+import { profileAPI, followAPI, videoAPI, vipAPI, likeAPI, payoutAPI } from "../../lib/supabase";
 import { useFollow, useIsMobile } from "../../hooks/index";
 import { AVATARS } from "../../data/theme";
 import VideoCard from "../VideoCard";
@@ -50,204 +50,304 @@ function CountUp({ end, duration = 1000 }) {
   return <>{count.toFixed(2)}</>;
 }
 
-function WithdrawModal({ profile, onClose, onFinish }) {
+function WithdrawModal({ profile, onClose, onFinish, onLoading, setIsSuccess }) {
   const isMobile = useIsMobile();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(1); // 1: Currency/Amount, 2: Method, 3: Details
   const [selectedCur, setSelectedCur] = useState(null);
   const [amount, setAmount] = useState("");
-  const [details, setDetails] = useState({ method: "UPI", address: "", name: "" });
+  const [method, setMethod] = useState(null);
+  const [details, setDetails] = useState({ address: "", name: "" });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const { session, showToast } = useApp();
 
   const minWithdrawUSD = 10;
   const userBalanceUSD = profile?.earnings_balance || 0;
-  const isAmountValid = Number(amount) >= minWithdrawUSD && Number(amount) <= userBalanceUSD;
 
-  const handleNext = () => {
-    if (!selectedCur) return;
-    if (isAmountValid) setStep(2);
+  // Payment Method Data with Colors & Icons
+  const PAYMENT_METHODS = [
+    { id: "UPI", name: "UPI / GPay", color: "#5f259f", icon: "🇮🇳", sub: "India", pattern: /^[\w.-]+@[\w.-]+$/ },
+    { id: "Bkash", name: "bKash", color: "#e2136e", icon: "🇧🇩", sub: "Bangladesh", pattern: /^(01)[3-9]\d{8}$/ },
+    { id: "JazzCash", name: "JazzCash", color: "#ffb800", icon: "🇵🇰", sub: "Pakistan", pattern: /^\d{11}$/ },
+    { id: "PayPal", name: "PayPal", color: "#003087", icon: "🌐", sub: "International", pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+    { id: "Bank", name: "Bank", color: "#333", icon: "🏦", sub: "Swift/IFSC", pattern: /.{8,}/ },
+  ];
+
+  const validate = () => {
+    let errs = {};
+    if (!details.name || details.name.length < 3) errs.name = "Enter full legal name";
+    if (method && !method.pattern.test(details.address)) {
+      errs.address = `Invalid ${method.name} format`;
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const handleFinish = async () => {
+    if (!validate()) return;
+
+    onLoading(true); // Parent isProcessing = true
     setLoading(true);
-    // Simulate API Call
-    setTimeout(() => {
+
+    try {
+      const amountUSD = Number(amount);
+      const converted = (amountUSD * selectedCur.rate).toFixed(2);
+
+      const updatedProfile = await payoutAPI.executeWithdrawal(session.user.id, {
+        amountUSD,
+        currency: selectedCur.code,
+        convertedAmount: converted,
+        method: method.id,
+        accountName: details.name,
+        accountDetails: details.address
+      });
+
+      // --- SUCCESS SEQUENCE ---
+      onLoading(false);      // Hide Spinner
+      setIsSuccess(true);    // Show Checkmark (passed via props or context)
       setLoading(false);
-      onFinish(`Payout of ${selectedCur.symbol}${(amount * selectedCur.rate).toFixed(2)} is being processed!`);
-      onClose();
-    }, 1800);
+      // Wait for 1.5 seconds so user can see the checkmark
+      await new Promise(res => setTimeout(res, 2000));
+
+      onFinish({
+        message: `Success! ${selectedCur.symbol}${converted} requested.`,
+        newProfile: updatedProfile
+      });
+
+      setIsSuccess(false);   // Reset
+      onClose();             // Close Modal
+    } catch (err) {
+      onLoading(false);
+      showToast(err.message || "Transaction failed", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
+
+  const isAmountValid = Number(amount) >= minWithdrawUSD && Number(amount) <= userBalanceUSD;
   return (
     <Modal onClose={onClose} maxWidth={480}>
       <div style={{
-        padding: isMobile ? "12px 8px" : "20px",
+        padding: isMobile ? "10px" : "20px",
         background: `linear-gradient(180deg, ${C.bg} 0%, ${C.bg2} 100%)`,
-        borderRadius: 24
+        borderRadius: 24,
+        maxHeight: '90vh',
+        overflowY: 'auto'
       }}>
-        {/* Header Section */}
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{
-            fontSize: 40, marginBottom: 12,
-            filter: 'drop-shadow(0 0 10px rgba(76, 175, 80, 0.3))'
-          }}>🏦</div>
-          <h2 style={{
-            fontSize: 24, fontWeight: 900, color: C.text,
-            margin: 0, fontFamily: "'Syne', sans-serif"
-          }}>Secure Withdrawal</h2>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            marginTop: 8, padding: '4px 12px', borderRadius: 20,
-            background: 'rgba(76, 175, 80, 0.1)', border: '1px solid rgba(76, 175, 80, 0.2)'
-          }}>
-            <span style={{ fontSize: 12, color: '#4caf50', fontWeight: 700 }}>
-              Available: ${userBalanceUSD.toFixed(2)}
-            </span>
-          </div>
+        {/* Progress Bar */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
+          {[1, 2, 3].map(s => (
+            <div key={s} style={{
+              flex: 1, height: 4, borderRadius: 2,
+              background: step >= s ? C.accent : C.border,
+              transition: '0.3s'
+            }} />
+          ))}
         </div>
 
-        {step === 1 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* Currency Grid */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'block' }}>
-                1. Select Payout Currency
-              </label>
-              <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10,
-                maxHeight: 180, overflowY: 'auto', padding: '4px',
-                scrollbarWidth: 'none'
-              }}>
-                {CURRENCIES.map(c => (
-                  <button
-                    key={c.code}
-                    onClick={() => setSelectedCur(c)}
-                    style={{
-                      padding: '14px', borderRadius: 16,
-                      border: `2px solid ${selectedCur?.code === c.code ? C.accent : C.border}`,
-                      background: selectedCur?.code === c.code ? `${C.accent}15` : C.bg3,
-                      color: selectedCur?.code === c.code ? C.accent : C.text,
-                      fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                    }}
-                  >
-                    <span>{c.name}</span>
-                    <span style={{ opacity: 0.6 }}>{c.symbol}</span>
-                  </button>
-                ))}
+        {step === 1 && (
+          <div style={{ animation: 'fadeIn 0.3s' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.text, marginBottom: 4 }}>Withdraw Funds</h2>
+            <p style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Select currency and enter amount</p>
+
+            {/* --- Balance Card --- */}
+            <div style={{
+              background: 'rgba(76, 175, 80, 0.08)',
+              padding: '18px',
+              borderRadius: 20,
+              border: '1px solid rgba(76, 175, 80, 0.15)',
+              marginBottom: 24,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#4caf50', letterSpacing: 1.2, marginBottom: 4 }}>AVAILABLE BALANCE</div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: C.text }}>${userBalanceUSD.toFixed(2)}</div>
               </div>
+              <button
+                onClick={() => setAmount(userBalanceUSD.toString())}
+                style={{
+                  background: '#4caf50', border: 'none', color: '#fff',
+                  padding: '6px 14px', borderRadius: 10, fontSize: 11,
+                  fontWeight: 800, cursor: 'pointer', transition: 'transform 0.2s'
+                }}
+              >
+                USE MAX
+              </button>
             </div>
 
             {/* Amount Input Section */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'block' }}>
-                2. Enter Amount (USD)
-              </label>
-              <div style={{ position: 'relative' }}>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, display: 'block', marginBottom: 10 }}>WITHDRAW AMOUNT (USD)</label>
+              <div style={{
+                display: 'flex', alignItems: 'center', background: C.bg3,
+                padding: '16px 20px', borderRadius: 16, border: `1px solid ${Number(amount) > userBalanceUSD ? '#ff4444' : C.border}`
+              }}>
+                <span style={{ fontSize: 24, fontWeight: 900, color: C.accent, marginRight: 10 }}>$</span>
                 <input
                   type="number"
-                  placeholder="0.00"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
-                  style={{
-                    width: '100%', padding: '18px 20px', borderRadius: 16,
-                    background: C.bg3, border: `1px solid ${C.border}`,
-                    color: C.text, fontSize: 18, fontWeight: 800, outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
+                  placeholder="0.00"
+                  style={{ background: 'none', border: 'none', fontSize: 24, fontWeight: 900, color: C.text, outline: 'none', width: '100%' }}
                 />
-                <div style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontWeight: 700 }}>USD</div>
+              </div>
+
+              {/* Dynamic Status Message (Moved back to directly under input) */}
+              <div style={{
+                fontSize: 11,
+                marginTop: 8,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                color: Number(amount) > userBalanceUSD ? '#ff4444' : (Number(amount) >= minWithdrawUSD ? '#4caf50' : C.muted)
+              }}>
+                {Number(amount) > userBalanceUSD ? (
+                  <><span>❌</span> Amount exceeds your available balance</>
+                ) : Number(amount) > 0 && Number(amount) < minWithdrawUSD ? (
+                  <><span>ℹ️</span> Minimum withdrawal is ${minWithdrawUSD}</>
+                ) : Number(amount) >= minWithdrawUSD ? (
+                  <><span>✅</span> Ready for payout</>
+                ) : (
+                  `Enter at least $${minWithdrawUSD} to continue`
+                )}
               </div>
             </div>
 
-            {/* Conversion Result Box */}
-            {selectedCur && amount > 0 && (
+            {/* Currency Selection */}
+            <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, display: 'block', marginBottom: 12 }}>RECEIVE AS</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
+              {CURRENCIES.map(c => (
+                <button
+                  key={c.code}
+                  onClick={() => setSelectedCur(c)}
+                  style={{
+                    padding: '14px', borderRadius: 14,
+                    border: `2px solid ${selectedCur?.code === c.code ? C.accent : 'transparent'}`,
+                    background: selectedCur?.code === c.code ? `${C.accent}15` : C.bg3,
+                    color: C.text, transition: '0.2s', cursor: 'pointer', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 900 }}>{c.code}</div>
+                  <div style={{ fontSize: 10, opacity: 0.6 }}>{c.name}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* --- NEW PLACEMENT: Conversion Preview (Between selection and button) --- */}
+            {selectedCur && isAmountValid && (
               <div style={{
-                background: `linear-gradient(90deg, ${C.accent}15, transparent)`,
-                padding: '20px', borderRadius: 20, borderLeft: `4px solid ${C.accent}`,
-                animation: 'fadeIn 0.3s ease'
+                background: `linear-gradient(135deg, ${C.accent}15, ${C.accent2}05)`,
+                padding: '20px',
+                borderRadius: 20,
+                border: `1px solid ${C.accent}33`,
+                marginBottom: 24,
+                textAlign: 'center',
+                animation: 'slideInUp 0.3s ease-out'
               }}>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>You will receive approx:</div>
-                <div style={{ fontSize: 28, fontWeight: 900, color: C.text }}>
-                  {selectedCur.symbol}{(amount * selectedCur.rate).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, letterSpacing: 1, marginBottom: 8 }}>
+                  ESTIMATED PAYOUT ({selectedCur.code})
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 24, fontWeight: 900, color: C.text }}>{selectedCur.symbol}</span>
+                  <span style={{ fontSize: 36, fontWeight: 900, color: C.text }}>
+                    {(Number(amount) * selectedCur.rate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 8 }}>
+                  Rate: 1 USD = {selectedCur.symbol}{selectedCur.rate} {selectedCur.code}
                 </div>
               </div>
             )}
 
-            {/* Dynamic Large Action Button */}
-            <button
-              onClick={handleNext}
+            <Btn
               disabled={!selectedCur || !isAmountValid}
-              style={{
-                width: '100%', padding: '20px', borderRadius: 18,
-                background: !selectedCur ? C.bg3 : (!isAmountValid ? '#ff444422' : `linear-gradient(135deg, ${C.accent}, ${C.accent2})`),
-                color: !selectedCur ? C.muted : (!isAmountValid ? '#ff4444' : '#fff'),
-                border: 'none', fontSize: 16, fontWeight: 800, cursor: isAmountValid ? 'pointer' : 'not-allowed',
-                transition: 'all 0.3s', boxShadow: isAmountValid ? `0 8px 25px ${C.accent}44` : 'none'
-              }}
+              onClick={() => setStep(2)}
+              fullWidth
+              style={{ padding: '18px', fontSize: 16 }}
             >
-              {!selectedCur
-                ? "Select a Currency"
-                : (Number(amount) < minWithdrawUSD
-                  ? `Minimum $${minWithdrawUSD} Required`
-                  : (Number(amount) > userBalanceUSD ? "Insufficient Balance" : "Continue to Payout"))
-              }
-            </button>
+              Next: Select Payout Method
+            </Btn>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, animation: 'slideIn 0.3s ease' }}>
-            <div style={{ textAlign: 'center', background: C.bg3, padding: '12px', borderRadius: 12, border: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 11, color: C.muted }}>Payout Amount</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#4caf50' }}>{selectedCur.symbol}{(amount * selectedCur.rate).toFixed(2)}</div>
+        )}
+
+
+        {/* STEP 2: SELECT METHOD CARDS */}
+        {step === 2 && (
+          <div style={{ animation: 'slideIn 0.3s' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.text, marginBottom: 8 }}>Payout Method</h2>
+            <p style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Select how you want to receive funds</p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+              {PAYMENT_METHODS.map(m => (
+                <div
+                  key={m.id}
+                  onClick={() => setMethod(m)}
+                  style={{
+                    padding: '16px', borderRadius: 18, cursor: 'pointer',
+                    border: `2px solid ${method?.id === m.id ? m.color : C.border}`,
+                    background: method?.id === m.id ? `${m.color}10` : C.bg3,
+                    display: 'flex', alignItems: 'center', gap: 15, transition: '0.2s'
+                  }}
+                >
+                  <div style={{ fontSize: 24 }}>{m.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 800, color: C.text }}>{m.name}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{m.sub}</div>
+                  </div>
+                  {method?.id === m.id && <div style={{ color: m.color, fontWeight: 900 }}>✓</div>}
+                </div>
+              ))}
             </div>
 
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'block' }}>
-                Payment Method
-              </label>
-              <select
-                value={details.method}
-                onChange={e => setDetails({ ...details, method: e.target.value })}
-                style={{
-                  width: '100%', padding: '16px', borderRadius: 14,paddingRight: '40px',
-                  background: C.bg3, color: C.text, border: `1px solid ${C.border}`,
-                  fontSize: 14, fontWeight: 600, outline: 'none',appearance: 'none',
-                }}
-              >
-                <option value="UPI">UPI / GPay / PhonePe (India)</option>
-                <option value="Bkash">bKash / Nagad (Bangladesh)</option>
-                <option value="JazzCash">JazzCash / EasyPaisa (Pakistan)</option>
-                <option value="PayPal">PayPal (International)</option>
-                <option value="Bank">Direct Bank Transfer</option>
-              </select>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Btn variant="secondary" onClick={() => setStep(1)} style={{ flex: 1 }}>Back</Btn>
+              <Btn disabled={!method} onClick={() => setStep(3)} style={{ flex: 2 }}>Select Method</Btn>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: ACCOUNT DETAILS */}
+        {step === 3 && (
+          <div style={{ animation: 'slideIn 0.3s' }}>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 40 }}>{method.icon}</div>
+              <h2 style={{ fontSize: 20, fontWeight: 900, color: C.text }}>Confirm Details</h2>
+              <div style={{ fontSize: 12, color: C.muted }}>Payout to {method.name}</div>
             </div>
 
-            <Input
-              label="Account Holder Name"
-              placeholder="Full Name as per ID"
-              value={details.name}
-              onChange={e => setDetails({ ...details, name: e.target.value })}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
+              <Input
+                label="Legal Full Name"
+                placeholder="Name on Account"
+                value={details.name}
+                error={errors.name}
+                onChange={e => setDetails({ ...details, name: e.target.value })}
+              />
+              <Input
+                label={`${method.name} ID / Number`}
+                placeholder={method.id === 'PayPal' ? 'email@example.com' : 'ID or Phone Number'}
+                value={details.address}
+                error={errors.address}
+                onChange={e => setDetails({ ...details, address: e.target.value })}
+              />
 
-            <Input
-              label="Payment Address / Number"
-              placeholder="UPI ID, bKash No, or Email"
-              value={details.address}
-              onChange={e => setDetails({ ...details, address: e.target.value })}
-            />
-
-            <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
-              <Btn onClick={() => setStep(1)} variant="secondary" style={{ flex: 1, padding: '16px' }}>Back</Btn>
-              <Btn onClick={handleSubmit} loading={loading} style={{
-                flex: 2, padding: '16px',
-                background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`,
-                boxShadow: `0 8px 25px ${C.accent}44`
-              }}>
-                Confirm Payout
-              </Btn>
+              <div style={{ padding: 16, background: 'rgba(76, 175, 80, 0.1)', borderRadius: 12, border: '1px solid #4caf5033' }}>
+                <div style={{ fontSize: 11, color: '#4caf50', fontWeight: 700 }}>ESTIMATED PAYOUT</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: C.text }}>
+                  {selectedCur.symbol}{(amount * selectedCur.rate).toLocaleString()}
+                </div>
+              </div>
             </div>
 
-            <div style={{ fontSize: 10, color: C.muted, textAlign: 'center', marginTop: 10 }}>
-              🛡️ Verified Secure Transaction • 24/7 Support
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Btn variant="secondary" onClick={() => setStep(2)} style={{ flex: 1 }}>Back</Btn>
+              <Btn loading={loading} onClick={handleFinish} style={{ flex: 2, background: method.color }}>Confirm Payout</Btn>
             </div>
           </div>
         )}
@@ -358,8 +458,8 @@ export default function ProfilePage({ userId, passedData, onClose }) {
   const [showFollow, setShowFollow] = useState(null); // "followers" | "following" | null
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-
-
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   const handleClose = () => {
     if (onClose) return onClose();
 
@@ -557,13 +657,14 @@ export default function ProfilePage({ userId, passedData, onClose }) {
 
 
 
-
   return (
     <div style={{
       maxWidth: 940, margin: "0 auto",
       padding: isMobile ? "0 0 80px" : "20px 0 40px",
       position: 'relative'
     }}>
+
+
 
       {/* ── ATTRACTIVE CLOSE BUTTON ── */}
       <button
@@ -644,9 +745,10 @@ export default function ProfilePage({ userId, passedData, onClose }) {
             {/* ── Stats: followers / following / videos — all clickable ── */}
             <div style={{
               display: "flex",
-              gap: isMobile ? 18 : 32,
+              gap: isMobile ? 12 : 32,
               marginBottom: 16,
               flexWrap: "wrap",
+              alignItems: "flex-start",
             }}>
               {/* Followers */}
               <button
@@ -701,7 +803,7 @@ export default function ProfilePage({ userId, passedData, onClose }) {
                 style={{
                   textAlign: "left",
                   cursor: isOwn ? "pointer" : "default",
-                  padding: isOwn ? "6px 12px" : "0",
+                  padding: isOwn ? "6px 12px" : "4px 0",
                   marginLeft: isOwn ? "-12px" : "0", // Offsets padding to keep alignment
                   borderRadius: "12px",
                   background: isOwn ? "rgba(76, 175, 80, 0.05)" : "transparent",
@@ -902,8 +1004,37 @@ export default function ProfilePage({ userId, passedData, onClose }) {
         <WithdrawModal
           profile={profile}
           onClose={() => setWithdrawOpen(false)}
-          onFinish={(msg) => showToast(msg, "success")}
+          onLoading={setIsProcessing}
+          setIsSuccess={setIsSuccess} // <--- ADD THIS LINE
+          onFinish={({ message, newProfile }) => {
+            showToast(message, "success");
+            setProfile(newProfile);
+            refreshProfile();
+          }}
         />
+      )}
+
+      {/* --- FULL SCREEN LOCKOUT OVERLAY --- */}
+      {isProcessing && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(5px)',
+          zIndex: 9999, // Higher than Modals
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'wait'
+        }}>
+          <Spinner size={50} color="#4caf50" />
+          <h2 style={{ color: '#fff', marginTop: 20, fontWeight: 800 }}>Processing Payout...</h2>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Please do not refresh or close the page</p>
+        </div>
       )}
     </div>
   );
