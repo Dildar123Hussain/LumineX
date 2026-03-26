@@ -123,10 +123,10 @@ export default function UploadModal() {
         const scale = Math.min(1, 400 / video.videoWidth);
         canvas.width = video.videoWidth * scale;
         canvas.height = video.videoHeight * scale;
-        
+
         const times = [0.1, 0.3, 0.6, 0.9].map(p => p * video.duration);
         const thumbs = [];
-        
+
         for (const time of times) {
           video.currentTime = time;
           await new Promise(r => (video.onseeked = r));
@@ -177,44 +177,56 @@ export default function UploadModal() {
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+
     setIsUploading(true);
     setUploadProgress(0);
+
     try {
       const userId = session?.user?.id;
       if (!userId) throw new Error("Please log in to upload");
 
+      // --- 1. UPLOAD VIDEO (STAYING ON SUPABASE) ---
       const fileExt = videoFile.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`;
+      const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${userId}/${fileName}`;
+      const CLOUDINARY_CLOUD_NAME = "dxv2ijftd";
+      const UPLOAD_PRESET = "luminex";
 
-      // 1. Upload Video
-      const { error: vError } = await supabase.storage.from('videos').upload(filePath, videoFile, {
-        onUploadProgress: (p) => setUploadProgress(Math.round((p.loaded / p.total) * 100))
-      });
-      if (vError) throw vError;
+      const formData = new FormData();
+      formData.append("file", selectedThumb); // The base64 string
+      formData.append("upload_preset", UPLOAD_PRESET);
+      formData.append("folder", "thumbnails"); // Optional: organizes files in Cloudinary
 
-      // 2. Upload Thumbnail
-      const thumbRes = await fetch(selectedThumb);
-      const thumbBlob = await thumbRes.blob();
-      const thumbPath = `${userId}/${fileName}_thumb.jpg`;
-      await supabase.storage.from('thumbnails').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' });
+      const cloudinaryRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+        { method: "POST", body: formData }
+      );
 
-      // 3. Insert Database Record
+      const cloudinaryData = await cloudinaryRes.json();
+      if (!cloudinaryRes.ok) throw new Error("Cloudinary Upload Failed");
+      // 1. Get the raw URL from Cloudinary
+      const finalThumbnailUrl = cloudinaryData.secure_url;
+
+      const optimizedThumbUrl = finalThumbnailUrl.replace('/upload/', '/upload/f_auto,q_auto/');
+ 
       const { error: dbError } = await supabase.from('videos').insert([{
         user_id: userId,
         title: form.title,
         categories: form.categories,
         video_url: filePath,
-        thumbnail_url: thumbPath,
+        thumbnail_url: optimizedThumbUrl, 
         duration: videoMeta.duration,
         size: videoFile.size
       }]);
 
       if (dbError) throw dbError;
+
       setIsUploading(false);
       setShowSuccess(true);
+
     } catch (err) {
       setIsUploading(false);
+      console.error(err);
       alert(err.message || "Upload failed");
     }
   };
@@ -282,7 +294,7 @@ export default function UploadModal() {
             {/* --- DYNAMIC MULTI-SELECT CATEGORIES --- */}
             <div>
               <label style={labelStyle}>Categories (Select 1 or more) *</label>
-              
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                 {form.categories.length === 0 && <span style={{ fontSize: 12, color: C.muted, fontStyle: 'italic' }}>Please select a sport...</span>}
                 {form.categories.map(cat => (
@@ -297,8 +309,8 @@ export default function UploadModal() {
                 {loadingCats ? <Spinner size={16} /> : dynamicCategories.map(cat => {
                   const active = form.categories.includes(cat);
                   return (
-                    <div 
-                      key={cat} 
+                    <div
+                      key={cat}
                       onClick={() => toggleCategory(cat)}
                       style={{
                         ...pillStyle,
@@ -350,40 +362,40 @@ const dropzoneStyle = {
 
 const labelStyle = { display: "block", fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 };
 
-const categoryPickerStyle = { 
-  display: 'flex', 
-  flexWrap: 'wrap', 
-  gap: 8, 
-  maxHeight: 140, 
-  overflowY: 'auto', 
-  padding: '12px', 
-  background: C.bg2, 
-  borderRadius: 16, 
+const categoryPickerStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+  maxHeight: 140,
+  overflowY: 'auto',
+  padding: '12px',
+  background: C.bg2,
+  borderRadius: 16,
   border: `1px solid ${C.border}`,
   scrollbarWidth: 'none'
 };
 
-const pillStyle = { 
-  padding: '8px 14px', 
-  borderRadius: 12, 
-  fontSize: 13, 
-  fontWeight: 600, 
-  cursor: 'pointer', 
-  transition: '0.2s', 
+const pillStyle = {
+  padding: '8px 14px',
+  borderRadius: 12,
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  transition: '0.2s',
   border: '1px solid transparent',
   display: 'flex',
   alignItems: 'center',
   gap: 6
 };
 
-const tagStyle = { 
-  padding: '6px 12px', 
-  borderRadius: 10, 
-  background: C.accent, 
-  color: '#fff', 
-  fontSize: 12, 
-  fontWeight: 700, 
-  display: 'flex', 
+const tagStyle = {
+  padding: '6px 12px',
+  borderRadius: 10,
+  background: C.accent,
+  color: '#fff',
+  fontSize: 12,
+  fontWeight: 700,
+  display: 'flex',
   alignItems: 'center',
   gap: 4,
   boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
@@ -391,13 +403,13 @@ const tagStyle = {
 
 const errorStyle = { color: "#ff4d4d", fontSize: 11, marginTop: 10, fontWeight: 600 };
 
-const successOverlayStyle = { 
-  position: "absolute", top: -20, left: -20, right: -20, bottom: -20, 
-  background: C.accent, borderRadius: 24, display: "flex", flexDirection: "column", 
-  alignItems: "center", justifyContent: "center", zIndex: 100, textAlign: 'center' 
+const successOverlayStyle = {
+  position: "absolute", top: -20, left: -20, right: -20, bottom: -20,
+  background: C.accent, borderRadius: 24, display: "flex", flexDirection: "column",
+  alignItems: "center", justifyContent: "center", zIndex: 100, textAlign: 'center'
 };
 
-const selectStyle = { 
-  width: "100%", background: C.bg3, border: `1.5px solid ${C.border}`, 
-  borderRadius: 12, color: C.text, padding: "14px", fontSize: 14, outline: "none" 
+const selectStyle = {
+  width: "100%", background: C.bg3, border: `1.5px solid ${C.border}`,
+  borderRadius: 12, color: C.text, padding: "14px", fontSize: 14, outline: "none"
 };
