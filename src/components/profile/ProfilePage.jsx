@@ -655,8 +655,6 @@ export default function ProfilePage({ userId, passedData, onClose }) {
 
 
 
-
-
   return (
     <div style={{
       maxWidth: 940, margin: "0 auto",
