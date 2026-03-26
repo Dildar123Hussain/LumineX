@@ -7,16 +7,15 @@ import { useApp } from "../context/AppContext";
 import { videoAPI, followAPI, likeAPI, historyAPI, supabase } from "../lib/supabase";
 import { useIsMobile } from "../hooks/index";
 import VideoCard from "../components/VideoCard";
-
-
+import { getAdLink, AD_CONFIG } from "../lib/ads";
 
 
 // ─────────────────────────────────────────────────────────────────────────────
 const MultiplexAdUnit = () => (
   <div style={{
     /* Remove gridColumn: '1 / -1' so it fits in a single slot */
-    background: C.bg2, 
-    borderRadius: '12px', 
+    background: C.bg2,
+    borderRadius: '12px',
     border: `1px solid ${C.border}`,
     overflow: 'hidden',
     display: 'flex',
@@ -24,18 +23,18 @@ const MultiplexAdUnit = () => (
     height: '100%', // Ensures it matches the height of neighboring cards
   }}>
     {/* Ad Placeholder/Thumbnail Area - matches VideoCard aspect ratio */}
-    <div style={{ 
-      aspectRatio: '16/9', 
-      background: '#1a1a1a', 
-      display: 'flex', 
-      alignItems: 'center', 
+    <div style={{
+      aspectRatio: '16/9',
+      background: '#1a1a1a',
+      display: 'flex',
+      alignItems: 'center',
       justify: 'center',
       position: 'relative'
     }}>
-       <span style={{ fontSize: '10px', color: '#666', position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4 }}>
+      <span style={{ fontSize: '10px', color: '#666', position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4 }}>
         Sponsored
       </span>
-       <div id="ad-slot-12345" style={{ width: '100%', height: '100%' }} />
+      <div id="ad-slot-12345" style={{ width: '100%', height: '100%' }} />
     </div>
 
     {/* Content Area - matches VideoCard padding and text style */}
@@ -198,7 +197,7 @@ function HeroBanner({ items }) {
     return () => clearInterval(t);
   }, [items?.length]);
 
-useEffect(() => {
+  useEffect(() => {
     const handleUpdate = (e) => {
       setLiveViews(prev => ({
         ...prev,
@@ -626,19 +625,45 @@ export default function HomePage({ tab, catFilter, setCatFilter, filter, setFilt
   // ── Follow request system ─────────────────────────────────────────────────
   const { pendingRequests, handleAccept, handleReject } = useFollowRequests(session, showToast);
 
-  // ── Pop-under ad (2 hr cap, unchanged) ────────────────────────────────────
+
+
+
+  // ... inside HomePage component
   useEffect(() => {
-    const handleGlobalClick = () => {
+    const handlePopUnder = (e) => {
       const last = localStorage.getItem('last_pop_time');
       const now = Date.now();
-      if (!last || (now - parseInt(last)) > 2 * 60 * 60 * 1000) {
-        const win = window.open('https://your-direct-ad-link.com', '_blank');
-        if (win) { window.focus(); localStorage.setItem('last_pop_time', now.toString()); window.removeEventListener('click', handleGlobalClick); }
+
+      if (!last || (now - parseInt(last)) > AD_CONFIG.COOLDOWN) {
+        const adUrl = getAdLink();
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        if (isMobile) {
+          // --- MOBILE FRIENDLY "TAB-UNDER" ---
+          // 1. Open your website in a new background tab
+          window.open(window.location.href, '_blank');
+          // 2. Redirect the CURRENT tab to the Ad (No popup blocker can stop this)
+          window.location.href = adUrl;
+        } else {
+          // --- STANDARD DESKTOP POP-UNDER ---
+          const link = document.createElement('a');
+          link.href = adUrl;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        localStorage.setItem('last_pop_time', now.toString());
+        window.removeEventListener('click', handlePopUnder);
       }
     };
-    window.addEventListener('click', handleGlobalClick);
-    return () => window.removeEventListener('click', handleGlobalClick);
+    // Attach listener to the whole window
+    window.addEventListener('click', handlePopUnder);
+
+    return () => window.removeEventListener('click', handlePopUnder);
   }, []);
+
 
   // ── Scroll to top on tab/filter change ────────────────────────────────────
   useEffect(() => {
