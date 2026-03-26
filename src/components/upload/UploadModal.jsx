@@ -1,31 +1,72 @@
 import { useState, useRef, useEffect } from "react";
 import { C, Modal, Btn, Input, Spinner } from "../ui/index";
 import { useApp } from "../../context/AppContext";
+import { supabase, videoAPI } from "../../lib/supabase";
 
-const SPORTS_CATEGORIES = [
-  { name: "Football/Soccer", icon: "⚽" },
-  { name: "Basketball", icon: "🏀" },
-  { name: "Cricket", icon: "🏏" },
-  { name: "Tennis", icon: "🎾" },
-  { name: "Boxing/MMA", icon: "🥊" },
-  { name: "E-Sports", icon: "🎮" },
-  { name: "Other", icon: "📁" }
-];
+/**
+ * A look-up helper for icons. 
+ * Since icons aren't in the DB, we map them by name.
+ */
+const GET_ICON = (name) => {
+  const map = {
+    "Football": "⚽",
+    "Soccer": "⚽",
+    "Basketball": "🏀",
+    "Cricket": "🏏",
+    "Tennis": "🎾",
+    "Boxing": "🥊",
+    "MMA": "🥊",
+    "E-Sports": "🎮",
+    "Gaming": "🎮",
+    "Golf": "⛳",
+    "Racing": "🏎️",
+  };
+  // Return mapped icon or default folder
+  return map[Object.keys(map).find(k => name?.includes(k))] || "📁";
+};
 
 export default function UploadModal() {
-  const { uploadModal, setUploadModal } = useApp();
-  
-  const [step, setStep] = useState(1); 
+  const { uploadModal, setUploadModal, session } = useApp();
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  const [step, setStep] = useState(1);
   const [videoFile, setVideoFile] = useState(null);
   const [videoPrev, setVideoPrev] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
-  
-  const [form, setForm] = useState({ title: "", category: "", description: "" });
+
+  const [videoMeta, setVideoMeta] = useState({ duration: 0, size: "" });
+  const [thumbnails, setThumbnails] = useState([]);
+  const [selectedThumb, setSelectedThumb] = useState(null);
+  const [isGeneratingThumbs, setIsGeneratingThumbs] = useState(false);
+
+  const [form, setForm] = useState({ title: "", categories: [], description: "" });
   const [errors, setErrors] = useState({});
   const vInput = useRef(null);
 
-  // Auto-disappear success message after 3 seconds
+  // Dynamic Categories State
+  const [dynamicCategories, setDynamicCategories] = useState([]);
+  const [loadingCats, setLoadingCats] = useState(true);
+
+  // 1. Fetch Categories on Mount
+  useEffect(() => {
+    async function loadCategories() {
+      if (!uploadModal) return;
+      try {
+        setLoadingCats(true);
+        const cats = await videoAPI.getCategories();
+        setDynamicCategories(cats || []);
+      } catch (err) {
+        console.error("Failed to load categories", err);
+      } finally {
+        setLoadingCats(false);
+      }
+    }
+    loadCategories();
+  }, [uploadModal]);
+
+  // 2. Auto-close success message
   useEffect(() => {
     if (showSuccess) {
       const timer = setTimeout(() => {
@@ -39,112 +80,255 @@ export default function UploadModal() {
   if (!uploadModal) return null;
 
   const close = () => {
+    if (isUploading) return;
     setUploadModal(false);
     setStep(1);
     setVideoFile(null);
     setVideoPrev(null);
-    setForm({ title: "", category: "", description: "" });
+    setThumbnails([]);
+    setSelectedThumb(null);
+    setUploadProgress(0);
+    setForm({ title: "", categories: [], description: "" });
     setErrors({});
   };
 
-  const onVideoSelect = (e) => {
+  const formatSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatDuration = (seconds) => {
+    const min = Math.floor(seconds / 60);
+    const sec = Math.floor(seconds % 60);
+    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+  };
+
+  const generateThumbnails = async (file) => {
+    setIsGeneratingThumbs(true);
+    const video = document.createElement("video");
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const videoUrl = URL.createObjectURL(file);
+    video.src = videoUrl;
+    video.muted = true;
+    video.playsInline = true;
+
+    return new Promise((resolve) => {
+      video.onloadedmetadata = async () => {
+        setVideoMeta({ duration: video.duration, size: formatSize(file.size) });
+        // Calculate sharp scale for mobile/desktop
+        const scale = Math.min(1, 400 / video.videoWidth);
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        
+        const times = [0.1, 0.3, 0.6, 0.9].map(p => p * video.duration);
+        const thumbs = [];
+        
+        for (const time of times) {
+          video.currentTime = time;
+          await new Promise(r => (video.onseeked = r));
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          thumbs.push(canvas.toDataURL("image/jpeg", 0.7));
+        }
+        setThumbnails(thumbs);
+        setSelectedThumb(thumbs[0]);
+        setIsGeneratingThumbs(false);
+        URL.revokeObjectURL(videoUrl);
+        video.remove();
+        resolve();
+      };
+    });
+  };
+
+  const onVideoSelect = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
+    if (!f.type.startsWith("video/")) {
+      setErrors({ file: "Only video files are allowed" });
+      return;
+    }
+    if (f.size > 500 * 1024 * 1024) {
+      setErrors({ file: "Video is too large (Max 500MB)" });
+      return;
+    }
+    setErrors({});
     setVideoFile(f);
     setVideoPrev(URL.createObjectURL(f));
-    // Clean up filename for the title
     setForm(p => ({ ...p, title: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ") }));
     setStep(2);
+    await generateThumbnails(f);
+  };
+
+  const toggleCategory = (cat) => {
+    if (isUploading) return;
+    setForm(prev => {
+      const exists = prev.categories.includes(cat);
+      if (exists) {
+        return { ...prev, categories: prev.categories.filter(c => c !== cat) };
+      } else {
+        return { ...prev, categories: [...prev.categories, cat] };
+      }
+    });
   };
 
   const handleSubmit = async () => {
-    // Mandatory Validation
-    const e = {};
-    if (!form.title.trim()) e.title = "Title is required";
-    if (!form.category) e.category = "Please select a category";
-    
-    if (Object.keys(e).length > 0) {
-      setErrors(e);
-      return;
-    }
-
-    setErrors({});
+    if (!canSubmit) return;
     setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const userId = session?.user?.id;
+      if (!userId) throw new Error("Please log in to upload");
 
-    // Dummy Upload Logic (Simulated)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+      const fileExt = videoFile.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`;
+      const filePath = `${userId}/${fileName}`;
 
-    setIsUploading(false);
-    setShowSuccess(true);
+      // 1. Upload Video
+      const { error: vError } = await supabase.storage.from('videos').upload(filePath, videoFile, {
+        onUploadProgress: (p) => setUploadProgress(Math.round((p.loaded / p.total) * 100))
+      });
+      if (vError) throw vError;
+
+      // 2. Upload Thumbnail
+      const thumbRes = await fetch(selectedThumb);
+      const thumbBlob = await thumbRes.blob();
+      const thumbPath = `${userId}/${fileName}_thumb.jpg`;
+      await supabase.storage.from('thumbnails').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' });
+
+      // 3. Insert Database Record
+      const { error: dbError } = await supabase.from('videos').insert([{
+        user_id: userId,
+        title: form.title,
+        categories: form.categories,
+        video_url: filePath,
+        thumbnail_url: thumbPath,
+        duration: videoMeta.duration,
+        size: videoFile.size
+      }]);
+
+      if (dbError) throw dbError;
+      setIsUploading(false);
+      setShowSuccess(true);
+    } catch (err) {
+      setIsUploading(false);
+      alert(err.message || "Upload failed");
+    }
   };
+
+  const canSubmit = form.title.trim() && form.categories.length > 0 && selectedThumb && !isGeneratingThumbs && !isUploading;
 
   return (
     <Modal onClose={close} maxWidth={480}>
-      <div style={{ position: "relative", minHeight: 300 }}>
-        
-        {/* Step 1: File Selection */}
+      <div style={{ position: "relative", minHeight: 300, paddingBottom: 10 }}>
+
         {step === 1 && (
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <div style={{ textAlign: "center", padding: isMobile ? "10px 0" : "20px 0" }}>
             <h2 style={headerStyle}>Upload Video</h2>
             <div onClick={() => vInput.current?.click()} style={dropzoneStyle}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>📤</div>
               <p style={{ fontWeight: 700, color: C.text }}>Select video to upload</p>
               <p style={{ fontSize: 12, color: C.muted }}>MP4 or MOV up to 500MB</p>
-              <input ref={vInput} type="file" accept="video/*" onChange={onVideoSelect} style={{ display: "none" }} />
+              <input ref={vInput} type="file" multiple={false} accept="video/*" onChange={onVideoSelect} style={{ display: "none" }} />
+              {errors.file && <p style={errorStyle}>{errors.file}</p>}
             </div>
           </div>
         )}
 
-        {/* Step 2: Form & Details */}
         {step === 2 && !showSuccess && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <h2 style={headerStyle}>Complete Details</h2>
-            
-            {/* Video Preview Holder */}
-            <div style={previewBoxStyle}>
-              <video src={videoPrev} muted style={videoElementStyle} />
-              <div style={{ flex: 1, overflow: "hidden" }}>
-                <p style={previewLabelStyle}>Selected File</p>
-                <p style={fileNameStyle}>{videoFile?.name}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 14 : 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ ...headerStyle, marginBottom: 0 }}>Video Details</h2>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.accent }}>
+                {videoMeta.size} • {formatDuration(videoMeta.duration)}
               </div>
-              <Btn size="sm" variant="secondary" onClick={() => setStep(1)}>Change</Btn>
             </div>
 
-            <Input 
-              label="Video Title *" 
-              value={form.title} 
-              onChange={e => setForm(p => ({ ...p, title: e.target.value }))} 
-              placeholder="Give your video a name"
-              error={errors.title}
+            <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', background: '#000', aspectRatio: '16/9' }}>
+              <video src={videoPrev} controls playsInline style={{ width: '100%', height: '100%' }} />
+            </div>
+
+            {/* Thumbnail Selection */}
+            <div>
+              <label style={labelStyle}>Select Cover Image *</label>
+              {isGeneratingThumbs ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 0' }}>
+                  <Spinner size={16} /> <span style={{ fontSize: 12, color: C.muted }}>Generating previews...</span>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  {thumbnails.map((t, i) => (
+                    <div key={i} onClick={() => setSelectedThumb(t)} style={{
+                      aspectRatio: '16/9', borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                      border: `3px solid ${selectedThumb === t ? C.accent : 'transparent'}`,
+                      transition: '0.2s', transform: selectedThumb === t ? 'scale(1.02)' : 'scale(1)'
+                    }}><img src={t} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Input
+              label="Video Title *"
+              value={form.title}
+              onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+              placeholder="Give your clip a title"
+              disabled={isUploading}
             />
 
+            {/* --- DYNAMIC MULTI-SELECT CATEGORIES --- */}
             <div>
-              <label style={labelStyle}>Category *</label>
-              <select 
-                style={{ ...selectStyle, borderColor: errors.category ? "#ff4d4d" : C.border }}
-                value={form.category}
-                onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
-              >
-                <option value="">-- Select Sport Type --</option>
-                {SPORTS_CATEGORIES.map(s => (
-                  <option key={s.name} value={s.name}>{s.icon} {s.name}</option>
+              <label style={labelStyle}>Categories (Select 1 or more) *</label>
+              
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {form.categories.length === 0 && <span style={{ fontSize: 12, color: C.muted, fontStyle: 'italic' }}>Please select a sport...</span>}
+                {form.categories.map(cat => (
+                  <div key={cat} style={tagStyle}>
+                    {GET_ICON(cat)} {cat}
+                    <span onClick={() => toggleCategory(cat)} style={{ marginLeft: 6, cursor: 'pointer', fontSize: 14 }}>✕</span>
+                  </div>
                 ))}
-              </select>
-              {errors.category && <p style={errorStyle}>{errors.category}</p>}
+              </div>
+
+              <div style={categoryPickerStyle}>
+                {loadingCats ? <Spinner size={16} /> : dynamicCategories.map(cat => {
+                  const active = form.categories.includes(cat);
+                  return (
+                    <div 
+                      key={cat} 
+                      onClick={() => toggleCategory(cat)}
+                      style={{
+                        ...pillStyle,
+                        background: active ? C.accent : C.bg3,
+                        color: active ? '#fff' : C.text,
+                        borderColor: active ? C.accent : C.border,
+                      }}
+                    >
+                      {GET_ICON(cat)} {cat}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            <Btn onClick={handleSubmit} loading={isUploading} fullWidth>
-              {isUploading ? "Uploading..." : "Submit Video"}
-            </Btn>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <Btn variant="secondary" style={{ flex: 1 }} onClick={() => setStep(1)} disabled={isUploading}>Back</Btn>
+              <Btn onClick={handleSubmit} loading={isUploading} disabled={!canSubmit} style={{ flex: 2, position: 'relative', overflow: 'hidden' }}>
+                {isUploading && <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${uploadProgress}%`, background: 'rgba(255,255,255,0.2)', transition: 'width 0.3s' }} />}
+                <span style={{ position: 'relative', zIndex: 1 }}>{isUploading ? `Uploading ${uploadProgress}%` : "Post Video"}</span>
+              </Btn>
+            </div>
           </div>
         )}
 
-        {/* Success Popup (Full Modal Overlay) */}
         {showSuccess && (
           <div style={successOverlayStyle}>
-            <div style={{ fontSize: 50 }}>🎉</div>
-            <h2 style={{ color: "white", marginTop: 10 }}>Upload Successful!</h2>
-            <p style={{ color: "rgba(255,255,255,0.8)" }}>Your video has been posted.</p>
+            <div style={{ fontSize: 50 }}>✅</div>
+            <h2 style={{ color: "white", marginTop: 10, fontWeight: 900 }}>Post Success!</h2>
+            <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 14 }}>Your video is now live.</p>
           </div>
         )}
       </div>
@@ -153,17 +337,67 @@ export default function UploadModal() {
 }
 
 // --- Styles ---
-const headerStyle = { fontSize: 20, fontWeight: 900, marginBottom: 20, textAlign: "center", color: C.text };
-const dropzoneStyle = { border: `2px dashed ${C.border}`, borderRadius: 16, padding: "50px 20px", background: C.bg3, cursor: "pointer" };
-const previewBoxStyle = { display: "flex", alignItems: "center", gap: 12, background: C.bg2, padding: 10, borderRadius: 12, border: `1px solid ${C.border}` };
-const videoElementStyle = { width: 70, height: 40, borderRadius: 4, objectFit: "cover", background: "#000" };
-const previewLabelStyle = { fontSize: 10, color: C.muted, fontWeight: 800, textTransform: "uppercase" };
-const fileNameStyle = { fontSize: 12, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
-const labelStyle = { display: "block", fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 6, textTransform: "uppercase" };
-const selectStyle = { width: "100%", background: C.bg3, border: `1.5px solid ${C.border}`, borderRadius: 10, color: C.text, padding: "12px", fontSize: 14, outline: "none" };
-const errorStyle = { color: "#ff4d4d", fontSize: 11, marginTop: 4, fontWeight: 600 };
-const successOverlayStyle = {
-  position: "absolute", top: -20, left: -20, right: -20, bottom: -20,
-  background: C.accent, borderRadius: 16, display: "flex", flexDirection: "column",
-  alignItems: "center", justifyContent: "center", zIndex: 100, textAlign: "center"
+const headerStyle = { fontSize: 20, fontWeight: 900, marginBottom: 20, color: C.text, textAlign: 'left' };
+
+const dropzoneStyle = {
+  border: `2px dashed ${C.border}`,
+  borderRadius: 24,
+  padding: "60px 20px",
+  background: C.bg3,
+  cursor: "pointer",
+  transition: "0.2s"
+};
+
+const labelStyle = { display: "block", fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 };
+
+const categoryPickerStyle = { 
+  display: 'flex', 
+  flexWrap: 'wrap', 
+  gap: 8, 
+  maxHeight: 140, 
+  overflowY: 'auto', 
+  padding: '12px', 
+  background: C.bg2, 
+  borderRadius: 16, 
+  border: `1px solid ${C.border}`,
+  scrollbarWidth: 'none'
+};
+
+const pillStyle = { 
+  padding: '8px 14px', 
+  borderRadius: 12, 
+  fontSize: 13, 
+  fontWeight: 600, 
+  cursor: 'pointer', 
+  transition: '0.2s', 
+  border: '1px solid transparent',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6
+};
+
+const tagStyle = { 
+  padding: '6px 12px', 
+  borderRadius: 10, 
+  background: C.accent, 
+  color: '#fff', 
+  fontSize: 12, 
+  fontWeight: 700, 
+  display: 'flex', 
+  alignItems: 'center',
+  gap: 4,
+  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+};
+
+const errorStyle = { color: "#ff4d4d", fontSize: 11, marginTop: 10, fontWeight: 600 };
+
+const successOverlayStyle = { 
+  position: "absolute", top: -20, left: -20, right: -20, bottom: -20, 
+  background: C.accent, borderRadius: 24, display: "flex", flexDirection: "column", 
+  alignItems: "center", justifyContent: "center", zIndex: 100, textAlign: 'center' 
+};
+
+const selectStyle = { 
+  width: "100%", background: C.bg3, border: `1.5px solid ${C.border}`, 
+  borderRadius: 12, color: C.text, padding: "14px", fontSize: 14, outline: "none" 
 };
