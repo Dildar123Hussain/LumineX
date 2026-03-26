@@ -659,7 +659,7 @@ export default function ProfilePage({ userId, passedData, onClose }) {
     <div style={{
       maxWidth: 940, margin: "0 auto",
       padding: isMobile ? "0 0 80px" : "20px 0 40px",
-      position: 'relative'
+      position: 'relative',
     }}>
 
 
@@ -668,9 +668,9 @@ export default function ProfilePage({ userId, passedData, onClose }) {
       <button
         onClick={handleClose}
         style={{
-          position: isMobile ? "fixed" : "absolute",
-          top: isMobile ? 56 : 10,
-          right: isMobile ? 10 : -10, // Pulls it slightly out of the container on desktop
+          position: isMobile ? "absolute" : "absolute",
+          top: isMobile ? 0 : 10,
+          right: isMobile ? 2 : -10, // Pulls it slightly out of the container on desktop
           zIndex: 1000,
           width: 40,
           height: 40,
@@ -701,7 +701,7 @@ export default function ProfilePage({ userId, passedData, onClose }) {
       {/* ── PROFILE HEADER ── */}
       <div style={{
         background: `linear-gradient(135deg,${C.bg2},${C.bg3})`,
-        borderRadius: isMobile ? 0 : 20,
+        borderRadius: isMobile ? 10 : 20,
         padding: isMobile ? "20px 16px" : "32px 36px",
         marginBottom: 20,
         border: `1px solid ${C.border}`,
