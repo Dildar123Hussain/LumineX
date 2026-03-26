@@ -670,7 +670,7 @@ export default function ProfilePage({ userId, passedData, onClose }) {
         style={{
           position: isMobile ? "absolute" : "absolute",
           top: isMobile ? 0 : 10,
-          right: isMobile ? 2 : -10, // Pulls it slightly out of the container on desktop
+          right: isMobile ? -1 : -10, // Pulls it slightly out of the container on desktop
           zIndex: 1000,
           width: 40,
           height: 40,
